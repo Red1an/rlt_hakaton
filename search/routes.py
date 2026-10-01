@@ -21,6 +21,7 @@ class SearchRequest(BaseModel):
     platform: Literal["ais", "em"] = "ais"
     mspOnly: bool = False
     searchNew: bool = False
+    customerInn: str | None = None
 
 
 @router.get("/categories")
@@ -43,7 +44,14 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
         if name is None:
             raise HTTPException(422, f"Нет такой категории ОКПД2: {okpd}")
         new_found = find_new_suppliers(conn, okpd, name) if request.searchNew else 0
-        result = recommend(conn, okpd, request.nmck, eshop=request.platform == "em", msp_only=request.mspOnly)
+        result = recommend(
+            conn,
+            okpd,
+            request.nmck,
+            eshop=request.platform == "em",
+            msp_only=request.mspOnly,
+            customer_inn=(request.customerInn or "").strip() or None,
+        )
 
     items = result["items"]
     request_id = uuid.uuid4().hex
@@ -54,7 +62,7 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
     if missing_names:
         background_tasks.add_task(enrich_names, missing_names)
 
-    return {"requestId": request_id, "total": len(items), "okpd": okpd, "newFound": new_found}
+    return {"requestId": request_id, "total": len(items), "okpd": okpd, "newFound": new_found, "model": result["model"]}
 
 
 @router.get("/variants")

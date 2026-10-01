@@ -1,0 +1,51 @@
+{
+  "features": [
+    "part",
+    "wins",
+    "win_share",
+    "comp_part",
+    "comp_wins",
+    "comp_win_share",
+    "direct_cnt",
+    "days_since_last",
+    "platform_share",
+    "price_fit",
+    "is_local",
+    "customer_bids",
+    "customer_group_bids",
+    "total_bids",
+    "groups_cnt",
+    "class_bids",
+    "is_msp",
+    "lot_log_price",
+    "lot_is_eshop",
+    "lot_is_smp"
+  ],
+  "test_period": [
+    "2025-09-30",
+    "2025-12-31"
+  ],
+  "results": {
+    "Топ по победам": {
+      "winner_in_top": 0.3079914775609591,
+      "participants_found": 0.2966770291573465,
+      "winner_mrr": 0.15511321474826448,
+      "winner_median_position": 15.0,
+      "winner_in_candidates": 0.7311711589840711
+    },
+    "Формула": {
+      "winner_in_top": 0.3105279177516994,
+      "participants_found": 0.2836684388759389,
+      "winner_mrr": 0.16109024602726738,
+      "winner_median_position": 15.0,
+      "winner_in_candidates": 0.7311711589840711
+    },
+    "LightGBM": {
+      "winner_in_top": 0.5706652237140248,
+      "participants_found": 0.5455391373793619,
+      "winner_mrr": 0.36767540109017577,
+      "winner_median_position": 2.0,
+      "winner_in_candidates": 0.7311711589840711
+    }
+  }
+}
