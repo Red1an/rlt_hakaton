@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres
+    container_name: rlt-db
+    restart: always
+    shm_size: 128mb
+    #volumes:
+    #  - type: tmpfs
+    #    target: /dev/shm
+    #    tmpfs:
+    #      size: 134217728 # 128*2^20 bytes = 128Mb
+    environment:
+      POSTGRES_NAME: ${POSTGRES_NAME}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - ${DB_PORT}:5432
+
+  adminer:
+    image: adminer
+    container_name: rlt-adminer
+    restart: always
+    ports:
+      - 8080:8080
