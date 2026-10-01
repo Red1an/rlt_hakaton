@@ -60,6 +60,8 @@ packages/react-devtools-cdt-mcp/dist
 *.sql
 !prisma/migrations/**/*.sql
 !database/dumps/*.sql
+!parser/sql/*.sql
+worker/.cache/
 *.xlsx
 
 # Logs

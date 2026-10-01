@@ -3,3 +3,7 @@ python-dotenv
 greenlet
 fastapi
 fastapi[standard]
+psycopg[binary]
+ddgs
+httpx
+beautifulsoup4
