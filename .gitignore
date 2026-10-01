@@ -61,3 +61,4 @@ packages/react-devtools-cdt-mcp/dist
 !prisma/migrations/**/*.sql
 !database/dumps/*.sql
 *.xlsx
+*.csv
