@@ -233,8 +233,73 @@ export default function MatchFormWidget() {
                 </label>
 
                 <div className={styles.field}>
-                    <div className={styles.labelRow}>
-                        <span className={styles.label}>Категория ОКПД2</span>
+                    <span className={styles.label}>Категория ОКПД2</span>
+
+                    <div className={styles.categoryRow}>
+                        <div className={styles.category} ref={ categoryRef }>
+                            <button
+                                className={styles.categoryChip}
+                                type="button"
+                                aria-expanded={ isCategoryOpen }
+                                aria-haspopup="listbox"
+                                onClick={openCategoryList}
+                            >
+                                <span className={styles.categoryIcon}>✨</span>
+
+                                { isDetecting
+                                    ? "Определяем категорию…"
+                                    : values.category === null
+                                        ? <span className={styles.categoryEmpty}>
+                                            Категория не выбрана
+                                        </span>
+                                        : (
+                                            <>
+                                                <span className={styles.categoryCode}>
+                                                    { values.category.code }
+                                                </span>
+
+                                                <span className={styles.categoryName}>
+                                                    { values.category.name }
+                                                </span>
+                                            </>
+                                        ) }
+
+                                <span className={styles.categoryCaret}>▾</span>
+                            </button>
+
+                            { isCategoryOpen && (
+                                <div className={styles.categoryMenu} role="listbox">
+                                    { categories.length === 0
+                                        ? <span className={styles.categoryLoading}>Загрузка…</span>
+                                        : categories.map((item) => (
+                                            <button
+                                                key={ item.code }
+                                                className={ `${ styles.categoryOption } ${
+                                                    values.category?.code === item.code
+                                                        ? styles.categoryOptionSelected
+                                                        : ""
+                                                }` }
+                                                type="button"
+                                                role="option"
+                                                aria-selected={ values.category?.code === item.code }
+                                                onClick={() => {
+                                                    setValue("category", item);
+                                                    setIsCategoryOpen(false);
+                                                    // Ручной выбор снимает автоподбор, иначе
+                                                    // следующая правка описания его перетрёт.
+                                                    disableAutoDetect();
+                                                }}
+                                            >
+                                                <span className={styles.categoryCode}>
+                                                    { item.code }
+                                                </span>
+
+                                                <span>{ item.name }</span>
+                                            </button>
+                                        )) }
+                                </div>
+                            ) }
+                        </div>
 
                         <div className={styles.autoRow}>
                             <button
@@ -265,46 +330,6 @@ export default function MatchFormWidget() {
                         </div>
                     </div>
 
-                    <div className={styles.category} ref={ categoryRef }>
-                        <button
-                            className={styles.categoryChip}
-                            type="button"
-                            aria-expanded={ isCategoryOpen }
-                            onClick={openCategoryList}
-                        >
-                            <span className={styles.categoryIcon}>✨</span>
-
-                            { isDetecting
-                                ? "Определяем категорию…"
-                                : values.category?.label ?? "Категория не выбрана" }
-                        </button>
-
-                        { isCategoryOpen && (
-                            <div className={styles.categoryMenu}>
-                                { categories.length === 0
-                                    ? <span className={styles.categoryEmpty}>Загрузка…</span>
-                                    : categories.map((item) => (
-                                        <button
-                                            key={ item.code }
-                                            className={styles.categoryOption}
-                                            type="button"
-                                            onClick={() => {
-                                                setValue("category", item);
-                                                setIsCategoryOpen(false);
-                                                // Ручной выбор снимает автоподбор, иначе
-                                                // следующая правка описания его перетрёт.
-                                                disableAutoDetect();
-                                            }}
-                                        >
-                                            <span className={styles.categoryCode}>{ item.code }</span>
-
-                                            <span>{ item.name }</span>
-                                        </button>
-                                    )) }
-                            </div>
-                        ) }
-                    </div>
-
                     <p className={styles.hint}>
                         { isDetecting
                             ? "Подбирается по описанию…"
@@ -315,7 +340,7 @@ export default function MatchFormWidget() {
                 </div>
 
                 <div className={styles.paramsRow}>
-                    <label className={ `${ styles.field } ${ styles.fieldNarrow }` }>
+                    <label className={styles.field}>
                         <span className={styles.label}>НМЦК, ₽</span>
 
                         <input
@@ -328,7 +353,7 @@ export default function MatchFormWidget() {
                         />
                     </label>
 
-                    <div className={styles.field}>
+                    <div className={ `${ styles.field } ${ styles.fieldPlatform }` }>
                         <span className={styles.label}>Площадка</span>
 
                         <div className={styles.segmented}>

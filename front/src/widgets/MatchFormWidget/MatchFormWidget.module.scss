@@ -45,22 +45,36 @@
     display: flex;
     align-items: flex-start;
     gap: 16px;
-    flex-wrap: wrap;
+
+    /* НМЦК и ИНН забирают всю свободную ширину. */
+    & > * {
+        flex: 1 1 0;
+    }
+
+    /* Переключатели жмутся по содержимому, чтобы не растягивать кнопки. */
+    .fieldPlatform,
+    .fieldMsp {
+        flex: 0 0 auto;
+    }
 }
 
-.fieldNarrow {
-    flex: 0 0 160px;
+/* На узких экранах параметры переносятся по одному на строку. */
+@media (width <= 900px) {
+    .paramsRow {
+        flex-wrap: wrap;
+
+        & > * {
+            flex: 1 1 100%;
+        }
+
+        .fieldPlatform,
+        .fieldMsp {
+            flex: 1 1 100%;
+        }
+    }
 }
 
-.fieldInn {
-    flex: 0 0 150px;
-}
-
-.fieldMsp {
-    flex: 0 0 auto;
-}
-
-/* Поле ИНН с ошибкой: текст выносится из потока, чтобы ряд не прыгал. */
+/* Поле ИНН: ошибка выносится из потока, чтобы ряд не прыгал по высоте. */
 .fieldInn {
     position: relative;
 }
@@ -88,10 +102,11 @@
     }
 }
 
-.labelRow {
+/* Чип категории и переключатель автоподбора — в одну строку. */
+.categoryRow {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
 }
 
 .autoRow {
@@ -146,24 +161,51 @@
     max-width: 620px;
 }
 
+/* Чип в стиле сайта: акцентная подложка, пунктирная рамка, акцентный текст. */
 .categoryChip {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-height: 36px;
+    width: 100%;
+    min-height: 34px;
     padding: 6px 12px;
-    border: 1px solid $chip-bg;
+    border: 1px dashed $accent-line;
     border-radius: 999px;
-    background: $chip-bg;
+    background: $accent-soft;
     font-family: $font-sans;
     font-size: $fs-base;
-    color: $ink;
+    font-weight: 500;
+    color: $accent-ink;
     cursor: pointer;
     text-align: left;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+        border-color: $accent;
+    }
+
+    &:focus-visible {
+        outline: 2px solid $accent;
+        outline-offset: 2px;
+    }
 }
 
 .categoryIcon {
     font-size: 12px;
+}
+
+.categoryName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.categoryCaret {
+    margin-left: auto;
+    padding-left: 8px;
+    font-size: 10px;
+    color: $accent-ink;
+    opacity: 0.6;
 }
 
 .categoryMenu {
@@ -209,10 +251,20 @@
     white-space: nowrap;
 }
 
+/* Плейсхолдер внутри чипа, когда категория ещё не подобрана. */
 .categoryEmpty {
+    color: $ink-3;
+    font-weight: 400;
+}
+
+.categoryLoading {
     padding: 10px;
     font-size: $fs-base;
     color: $ink-3;
+}
+
+.categoryOptionSelected {
+    background: $accent-soft;
 }
 
 .input {
@@ -251,6 +303,7 @@
     white-space: nowrap;
 }
 
+/* Переключатель площадки: ширина ровно по кнопкам, без растяжения. */
 .segmented {
     display: inline-flex;
     gap: 2px;
