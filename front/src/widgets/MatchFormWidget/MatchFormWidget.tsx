@@ -45,7 +45,12 @@ function formatNmck(raw: string): string {
     return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-export default function MatchFormWidget() {
+interface MatchFormWidgetProps {
+    /** Вызывается после успешного подбора — родитель показывает варианты. */
+    onSearched?: () => void;
+}
+
+export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
     const [ values, setValues ] = useState<MatchFormValues>( INITIAL_VALUES );
     const [ categories, setCategories ] = useState<OkpdCategory[]>([]);
     const [ categoryTerm, setCategoryTerm ] = useState("");
@@ -262,6 +267,7 @@ export default function MatchFormWidget() {
                 tone: "ok",
                 text: result.message,
             });
+            onSearched?.();
         } catch (error) {
             setNotice({
                 tone: "bad",

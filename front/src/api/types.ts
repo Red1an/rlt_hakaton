@@ -36,3 +36,35 @@ export interface SearchSuppliersResponseDto {
     requestId: string;
     total: number;
 }
+
+/** Роль компании на рынке категории. */
+export type SupplierRole = "man" | "dist" | "sup";
+
+/** Признак наличия истории закупок у поставщика. */
+export type VariantNovelty = "new" | "existing";
+
+/** Поставщик в списке вариантов. */
+export interface SupplierVariantDto {
+    id: string;
+    name: string;
+    inn: string;
+    /** Плашки компании: МСП, ИП, Филиал. */
+    flags: string[];
+    novelty: VariantNovelty;
+    role: SupplierRole;
+    /** Релевантность 0–100. */
+    score: number;
+    /** Участий в похожих лотах. */
+    part: number;
+    /** Побед в похожих лотах. */
+    wins: number;
+    /** Человекочитаемая свежесть последнего участия. */
+    last: string;
+    /** Аргументы «почему рекомендуем»: [иконка, текст]. */
+    why: Array<[string, string]>;
+}
+
+/** Ответ справочника вариантов. */
+export interface VariantsResponseDto {
+    items: SupplierVariantDto[];
+}

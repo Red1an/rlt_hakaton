@@ -6,6 +6,8 @@ import type {
     FetchCategoriesParams,
     SearchSuppliersRequestDto,
     SearchSuppliersResponseDto,
+    SupplierVariantDto,
+    VariantsResponseDto,
 } from "./types";
 
 /**
@@ -43,4 +45,11 @@ export async function searchSuppliers(
     );
 
     return data;
+}
+
+/** Список поставщиков-вариантов для экрана подбора. */
+export async function fetchVariants(): Promise<SupplierVariantDto[]> {
+    const { data } = await apiClient.get<VariantsResponseDto>("/match/variants");
+
+    return data.items;
 }

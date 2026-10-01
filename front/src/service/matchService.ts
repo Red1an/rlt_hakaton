@@ -1,4 +1,7 @@
 import * as matchApi from "../api/match";
+import type { SupplierRole } from "../api/types";
+
+export type { SupplierRole } from "../api/types";
 
 /** Категория ОКПД2 в виде, удобном для отображения. */
 export interface OkpdCategory {
@@ -25,12 +28,35 @@ export interface MatchSearchResult {
     message: string;
 }
 
+/** Поставщик-вариант в удобном для UI виде. */
+export interface SupplierVariant {
+    id: string;
+    name: string;
+    inn: string;
+    flags: string[];
+    /** Поставщика нет в истории закупок заказчика. */
+    isNew: boolean;
+    role: SupplierRole;
+    score: number;
+    part: number;
+    wins: number;
+    last: string;
+    why: Array<{ icon: string; text: string }>;
+}
+
 /** Кеш полного справочника, чтобы не дёргать api при каждом открытии списка. */
 let categoriesCache: OkpdCategory[] | null = null;
 
 const PLATFORM_LABELS: Record<MatchPlatform, string> = {
     ais: "АИС ГЗ",
     em: "Электронный магазин",
+};
+
+/** Подписи ролей компаний для фильтра и карточек. */
+export const ROLE_LABELS: Record<SupplierRole, string> = {
+    man: "Производитель",
+    dist: "Дистрибьютор",
+    sup: "Поставщик",
 };
 
 function toCategory(dto: { code: string; name: string }): OkpdCategory {
@@ -93,4 +119,26 @@ export async function submitSearch(values: MatchFormValues): Promise<MatchSearch
         total: result.total,
         message: `Подбор завершён: найдено ${ result.total } поставщиков по площадке «${ PLATFORM_LABELS[values.platform] }»`,
     };
+}
+
+/** Список поставщиков-вариантов, нормализованный для UI. */
+export async function fetchVariants(): Promise<SupplierVariant[]> {
+    const items = await matchApi.fetchVariants();
+
+    return items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        inn: item.inn,
+        flags: item.flags,
+        isNew: item.novelty === "new",
+        role: item.role,
+        score: item.score,
+        part: item.part,
+        wins: item.wins,
+        last: item.last,
+        why: item.why.map(([ icon, text ]) => ({
+            icon,
+            text,
+        })),
+    }));
 }

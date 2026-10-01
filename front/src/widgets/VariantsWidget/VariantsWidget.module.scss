@@ -1,0 +1,446 @@
+/* Сетка экрана вариантов: фильтры слева, карточки справа.
+   Без sticky — фильтры скроллятся вместе со страницей. */
+.layout {
+    display: grid;
+    grid-template-columns: minmax(196px, 232px) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+    margin-top: 24px;
+}
+
+/* ── Панель фильтров ─────────────────────────────────────────────────────── */
+
+.filters {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 18px;
+    background: $surface;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+}
+
+.filtersHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filtersTitle {
+    font-weight: 600;
+}
+
+.reset {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: $accent-ink;
+    font-family: $font-sans;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.groupTitle {
+    font-size: $fs-code;
+    font-weight: 600;
+    color: $ink-3;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Строка-чекбокс фильтра: квадрат, метка, счётчик справа. */
+.checkRow {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 30px;
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink;
+    text-align: left;
+    cursor: pointer;
+}
+
+.checkBox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid $line-2;
+    border-radius: $radius-sm;
+    background: transparent;
+    color: $on-accent;
+    font-size: $fs-badge;
+}
+
+.checkBoxOn {
+    border-color: $accent;
+    background: $accent;
+}
+
+/* Радиокнопка фильтра «Новизна»: точка вместо квадрата, выбор одного. */
+.radio {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid $line-2;
+    border-radius: 50%;
+    background: transparent;
+}
+
+.radioOn {
+    border-color: $accent;
+}
+
+.radioInner {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: $accent;
+}
+
+.checkLabel {
+    white-space: nowrap;
+}
+
+.checkCount {
+    margin-left: auto;
+    font-family: $font-mono;
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
+/* Цветная точка роли — в фильтре и в карточке. */
+.roleDot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.roleDot_man {
+    background: $role-man;
+}
+
+.roleDot_dist {
+    background: $role-dist;
+}
+
+.roleDot_sup {
+    background: $role-sup;
+}
+
+/* ── Список вариантов ────────────────────────────────────────────────────── */
+
+.results {
+    min-width: 0;
+}
+
+.cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.state {
+    padding: 40px;
+    color: $ink-2;
+    text-align: center;
+}
+
+.empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 40px;
+    border: 1px dashed $line-2;
+    border-radius: $radius-lg;
+    color: $ink-2;
+    text-align: center;
+}
+
+.emptyTitle {
+    font-weight: 600;
+    color: $ink;
+}
+
+.emptyReset {
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    color: $ink;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    cursor: pointer;
+
+    &:hover {
+        background: $surface-2;
+    }
+}
+
+/* ── Карточка варианта ───────────────────────────────────────────────────── */
+
+.card {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 24px;
+    padding: 18px 20px;
+    background: $surface;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+}
+
+.cardMain {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 999 1 380px;
+    min-width: 0;
+}
+
+.cardHead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.cardName {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: $font-sans;
+    font-size: 16.5px;
+    font-weight: 600;
+    color: $ink;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+        color: $accent-ink;
+    }
+}
+
+.flag {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: $radius-sm;
+    background: $surface-3;
+    color: $ink-2;
+    font-size: $fs-badge;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+/* Плашка «Новый» стоит сразу после МСП и выделяется цветом сегмента. */
+.flagNew {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: $radius-sm;
+    background: $seg-new-bg;
+    color: $seg-new-fg;
+    font-size: $fs-badge;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.cardMeta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: $fs-nav-secondary;
+    color: $ink-2;
+}
+
+.inn {
+    font-family: $font-mono;
+    font-size: 12.5px;
+}
+
+.sep {
+    color: $line-2;
+}
+
+.roleBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid $line;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: $ink-2;
+}
+
+.cardStats {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-size: $fs-nav-secondary;
+    color: $ink-2;
+
+    b {
+        font-family: $font-mono;
+        font-weight: 600;
+        color: $ink;
+    }
+}
+
+.why {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 11px 14px;
+    border-radius: 9px;
+    background: $surface-2;
+}
+
+.whyTitle {
+    font-size: $fs-code;
+    font-weight: 600;
+    color: $ink-3;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.whyList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+}
+
+.whyItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+}
+
+.whyIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: $accent-soft;
+    color: $accent-ink;
+    font-size: $fs-badge;
+}
+
+/* Правая колонка карточки: релевантность и кнопки. */
+.cardSide {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 140px;
+    max-width: 100%;
+}
+
+.scoreLabel {
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
+.scoreValue {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.scoreNumber {
+    font-family: $font-mono;
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.scoreMax {
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
+.scoreBar {
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: $surface-3;
+}
+
+.scoreBarFill {
+    height: 100%;
+    border-radius: 3px;
+    background: $accent;
+}
+
+.sideSpacer {
+    flex: 1;
+    min-height: 12px;
+}
+
+.shortList {
+    height: 36px;
+    border: 1px solid $accent;
+    border-radius: $radius-md;
+    background: $accent;
+    color: $on-accent;
+    font-family: $font-sans;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.shortListOn {
+    border-color: $accent-line;
+    background: $accent-soft;
+    color: $accent-ink;
+}
+
+.openCard {
+    height: 34px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    color: $ink;
+    font-family: $font-sans;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+
+    &:hover {
+        background: $surface-2;
+    }
+}
+
+/* На узких экранах фильтры встают над списком. */
+@media (width <= 900px) {
+    .layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
