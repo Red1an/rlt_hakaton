@@ -17,6 +17,14 @@ services:
     ports:
       - ${DB_PORT}:5432
 
+  adminer:
+    image: adminer
+    container_name: rlt-adminer
+    restart: always
+    ports:
+      - 8080:8080
+
+
   api:
     depends_on:
       - db
@@ -26,9 +34,11 @@ services:
     container_name: rlt-api
     ports:
       - 80:80
-  adminer:
-    image: adminer
-    container_name: rlt-adminer
-    restart: always
+
+  frontend:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    container_name: rlt-frontend
     ports:
-      - 8080:8080
+      - 3000:3000
