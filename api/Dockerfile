@@ -7,8 +7,7 @@ COPY ./req.txt .
 
 RUN pip install --no-cache-dir --upgrade -r req.txt
 
-RUN ls
-RUN pwd
+ENV PYTHONPATH=/app:/database
 
 COPY ./api .
 
