@@ -61,4 +61,27 @@ packages/react-devtools-cdt-mcp/dist
 !prisma/migrations/**/*.sql
 !database/dumps/*.sql
 *.xlsx
-*.csv
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+/ARCHITECTURE.md
+/Подбор поставщиков (офлайн).html
