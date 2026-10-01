@@ -2,6 +2,7 @@ from .db_engine import Database, database
 from .models import (
     AnnouncementModel,
     Base,
+    BidModel,
     LotModel,
     OKPDModel,
     SuppliersModel,
@@ -17,4 +18,5 @@ __all__ = [
     "LotModel",
     "SuppliersModel",
     "AnnouncementModel",
+    "BidModel",
 ]

@@ -9,10 +9,14 @@ class LotModel(Base):
     __tablename__ = "lots"
 
     id: Mapped[int_pk]
-    lot_id: Mapped[int] = mapped_column(Integer)
+    lot_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("announcements.lot_id", ondelete="CASCADE"),
+        nullable=False,
+    )
     product_name: Mapped[str] = mapped_column(TEXT)
-    okpd_code: Mapped[str] = mapped_column(
+    okpd_code: Mapped[str | None] = mapped_column(
         TEXT,
         ForeignKey("okpd.code", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )

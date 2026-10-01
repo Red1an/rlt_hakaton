@@ -85,3 +85,9 @@ dist-ssr
 *.sw?
 /ARCHITECTURE.md
 /Подбор поставщиков (офлайн).html
+docs/ARCH_DIAGRAM_PROMPT.md
+docs/ARCHITECTURE.md
+docs/DATA_DICTIONARY.md
+docs/DESIGN_PROMPT.md
+docs/GLOSSARY.md
+docs/TEAM_PLAN.md
