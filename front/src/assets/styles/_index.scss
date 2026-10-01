@@ -1,0 +1,6 @@
+// Единая точка входа для scss:variables и scss:fonts.
+// Подключается автоматически через `css.preprocessorOptions.scss.additionalData`
+// в vite.config.ts, поэтому вручную импортировать не нужно.
+
+@forward "variables";
+@forward "fonts";

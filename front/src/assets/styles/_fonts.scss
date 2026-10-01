@@ -1,0 +1,28 @@
+// Типографика. Сами файлы шрифтов подключаются ссылкой на Google Fonts
+// в `index.html` (Onest 400/500/600/700, JetBrains Mono 400/500/600),
+// здесь — только переменные и готовые стеки.
+
+$font-sans: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+$font-mono: "JetBrains Mono", ui-monospace, Consolas, "Liberation Mono", monospace;
+
+// ── Начертания ────────────────────────────────────────────────────────────
+$fw-regular: 400;
+$fw-medium: 500;
+$fw-semibold: 600;
+$fw-bold: 700;
+
+// ── Кегли ─────────────────────────────────────────────────────────────────
+$fs-badge: 11.5px;
+$fs-caption: 11.5px;
+$fs-nav-secondary: 13px;
+$fs-code: 12px;
+$fs-base: 14px;
+$fs-title: 15px;
+$fs-lead: 18px;
+
+// ── Интерлиньяж ───────────────────────────────────────────────────────────
+$lh-tight: 1.15;
+$lh-base: 1.45;
+
+// ── Толщина иконок (совпадает со stroke-width в макете) ───────────────────
+$icon-stroke: 1.6;

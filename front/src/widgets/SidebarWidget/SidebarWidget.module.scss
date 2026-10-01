@@ -1,0 +1,111 @@
+.sidebar {
+    width: $sidebar-width-expanded;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    background: $surface;
+    border-right: 1px solid $line;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: width .18s;
+}
+
+.collapsed {
+    width: $sidebar-width-collapsed;
+}
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: $radius-md;
+    background: transparent;
+    color: $ink-2;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    font-weight: $fw-medium;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+
+    &:hover {
+        background: $surface-2;
+    }
+}
+
+.itemActive,
+.itemActive:hover {
+    background: $accent-soft;
+    color: $accent-ink;
+}
+
+.icon {
+    display: flex;
+    flex-shrink: 0;
+
+    svg {
+        width: $icon-nav-size;
+        height: $icon-nav-size;
+        stroke-width: $icon-stroke;
+    }
+}
+
+.label {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.badge {
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: $accent;
+    color: $on-accent;
+    font-family: $font-mono;
+    font-size: $fs-badge;
+    font-weight: $fw-semibold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spacer {
+    flex: 1;
+}
+
+.collapseButton {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 36px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: $radius-md;
+    background: transparent;
+    color: $ink-3;
+    font-family: $font-sans;
+    font-size: $fs-nav-secondary;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+
+    &:hover {
+        background: $surface-2;
+    }
+}
+
+.collapseArrow {
+    width: 18px;
+    text-align: center;
+    font-size: $fs-base;
+    flex-shrink: 0;
+}

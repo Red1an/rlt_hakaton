@@ -1,0 +1,16 @@
+.page {
+    display: flex;
+    align-items: flex-start;
+    min-height: 100vh;
+    background: $bg;
+    color: $ink;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    line-height: $lh-base;
+}
+
+.content {
+    flex: 1;
+    min-width: 0;
+    padding: 28px 32px 80px;
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="nav-match" viewBox="0 0 18 18" fill="none" stroke="currentColor">
+    <circle cx="8" cy="8" r="5.5" />
+    <line x1="12" y1="12" x2="16" y2="16" />
+  </symbol>
+  <symbol id="nav-short" viewBox="0 0 18 18" fill="none" stroke="currentColor">
+    <line x1="3" y1="4.5" x2="15" y2="4.5" />
+    <line x1="3" y1="9" x2="15" y2="9" />
+    <line x1="3" y1="13.5" x2="10" y2="13.5" />
+  </symbol>
+  <symbol id="nav-market" viewBox="0 0 18 18" fill="none" stroke="currentColor">
+    <rect x="2.5" y="9" width="3" height="6.5" />
+    <rect x="7.5" y="5" width="3" height="10.5" />
+    <rect x="12.5" y="2.5" width="3" height="13" />
+  </symbol>
+  <symbol id="nav-quality" viewBox="0 0 18 18" fill="none" stroke="currentColor">
+    <circle cx="9" cy="9" r="6.5" />
+    <circle cx="9" cy="9" r="2.5" />
+  </symbol>
+</svg>

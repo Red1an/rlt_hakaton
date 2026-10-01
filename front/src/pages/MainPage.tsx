@@ -1,7 +1,24 @@
+import { useState } from "react";
+
+import SidebarWidget from "@/widgets/SidebarWidget/SidebarWidget";
+import type { SidebarScreen } from "@/widgets/SidebarWidget/SidebarWidget";
+
+import styles from "./MainPage.module.scss";
+
 export default function MainPage() {
+    const [ screen, setScreen ] = useState<SidebarScreen>( "match" );
+
     return (
-        <>
-            Ffffffffff
-        </>
+        <div className={styles.page}>
+            <SidebarWidget
+                activeScreen={ screen }
+                onNavigate={ setScreen }
+                shortListCount={ 8 }
+            />
+
+            <main className={styles.content}>
+                { screen }
+            </main>
+        </div>
     );
-};
+}
