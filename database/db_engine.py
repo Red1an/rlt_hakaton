@@ -23,7 +23,7 @@ def _build_db_url():
     password = os.getenv("POSTGRES_PASSWORD")
     host = os.getenv("POSTGRES_HOST")
     port = os.getenv("POSTGRES_PORT", "5432")
-    name = os.getenv("POSTGRES_NAME", "")
+    name = os.getenv("POSTGRES_DB", "")
 
     return f"{scheme}://{user}:{password}@{host}:{port}/{name}"
 
