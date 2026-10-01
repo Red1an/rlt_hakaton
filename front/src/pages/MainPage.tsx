@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import MatchFormWidget from "@/widgets/MatchFormWidget/MatchFormWidget";
 import SidebarWidget from "@/widgets/SidebarWidget/SidebarWidget";
 import type { SidebarScreen } from "@/widgets/SidebarWidget/SidebarWidget";
 
@@ -17,7 +18,7 @@ export default function MainPage() {
             />
 
             <main className={styles.content}>
-                { screen }
+                { screen === "match" ? <MatchFormWidget /> : screen }
             </main>
         </div>
     );

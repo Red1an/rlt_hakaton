@@ -1,0 +1,371 @@
+.card {
+    max-width: 1360px;
+    padding: 24px 26px 26px;
+    border: 1px solid $line;
+    border-radius: 14px;
+    background: $surface;
+    box-shadow: $shadow;
+}
+
+.title {
+    margin: 0 0 20px;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: $lh-tight;
+    color: $ink;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+}
+
+.label {
+    font-size: 13px;
+    font-weight: 500;
+    color: $ink-2;
+}
+
+.hint {
+    margin: 0;
+    font-size: $fs-caption;
+    color: $ink-3;
+}
+
+/** Параметры подбора в одну строку: НМЦК · Площадка · ИНН · Только МСП. */
+.paramsRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.fieldNarrow {
+    flex: 0 0 160px;
+}
+
+.fieldInn {
+    flex: 0 0 150px;
+}
+
+.fieldMsp {
+    flex: 0 0 auto;
+}
+
+/* Поле ИНН с ошибкой: текст выносится из потока, чтобы ряд не прыгал. */
+.fieldInn {
+    position: relative;
+}
+
+.queryInput {
+    flex: 1;
+    min-width: 0;
+    height: 92px;
+    padding: 16px 18px;
+    border: 1.5px solid $accent-line;
+    border-radius: $radius-md;
+    background: $surface;
+    font-family: $font-sans;
+    font-size: $fs-lead;
+    color: $ink;
+    outline: none;
+    transition: border-color 0.15s ease;
+
+    &::placeholder {
+        color: $ink-3;
+    }
+
+    &:focus {
+        border-color: $accent;
+    }
+}
+
+.labelRow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.autoRow {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.autoLabel {
+    font-size: $fs-caption;
+    color: $ink-2;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Тумблер поменьше — для галочки автоподбора в строке подписи. */
+.switchSmall {
+    position: relative;
+    width: 30px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid $line-2;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switchSmallOn {
+    border-color: $accent;
+    background: $accent;
+}
+
+.switchSmallKnob {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: $surface;
+    box-shadow: 0 1px 2px oklch(0.2 0.02 255 / 0.2);
+    transition: transform 0.15s ease;
+}
+
+.switchSmallOn .switchSmallKnob {
+    transform: translateX(12px);
+}
+
+.category {
+    position: relative;
+    max-width: 620px;
+}
+
+.categoryChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 6px 12px;
+    border: 1px solid $chip-bg;
+    border-radius: 999px;
+    background: $chip-bg;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink;
+    cursor: pointer;
+    text-align: left;
+}
+
+.categoryIcon {
+    font-size: 12px;
+}
+
+.categoryMenu {
+    position: absolute;
+    z-index: 10;
+    top: calc(100% + 6px);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    width: 420px;
+    max-height: 320px;
+    padding: 6px;
+    border: 1px solid $line;
+    border-radius: $radius-md;
+    background: $surface;
+    box-shadow: $shadow;
+    overflow-y: auto;
+}
+
+.categoryOption {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 9px 10px;
+    border: none;
+    border-radius: $radius-sm;
+    background: transparent;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+        background: $accent-soft;
+    }
+}
+
+.categoryCode {
+    font-family: $font-mono;
+    font-size: $fs-code;
+    color: $accent-ink;
+    white-space: nowrap;
+}
+
+.categoryEmpty {
+    padding: 10px;
+    font-size: $fs-base;
+    color: $ink-3;
+}
+
+.input {
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    font-family: $font-mono;
+    font-size: $fs-base;
+    color: $ink;
+    outline: none;
+    transition: border-color 0.15s ease;
+
+    &::placeholder {
+        color: $ink-3;
+    }
+
+    &:focus {
+        border-color: $accent;
+    }
+}
+
+.inputBad {
+    border-color: $bad;
+}
+
+/* Ошибка под полем, вне потока — ряд параметров не меняет высоту. */
+.error {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 3px;
+    font-size: $fs-caption;
+    color: $bad;
+    white-space: nowrap;
+}
+
+.segmented {
+    display: inline-flex;
+    gap: 2px;
+    height: 36px;
+    padding: 2px;
+    border-radius: $radius-md;
+    background: $surface-3;
+}
+
+.segment {
+    padding: 6px 14px;
+    border: none;
+    border-radius: $radius-sm;
+    background: transparent;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink-2;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+
+    &:hover:not(.segmentActive) {
+        color: $ink;
+    }
+}
+
+.segmentActive {
+    background: $surface;
+    color: $ink;
+    box-shadow: 0 1px 2px oklch(0.2 0.02 255 / 0.08);
+}
+
+/* Тумблер «Только МСП» — в один ряд с остальными параметрами. */
+.switch {
+    position: relative;
+    width: 38px;
+    height: 22px;
+    margin-top: 7px;
+    padding: 0;
+    border: 1px solid $line-2;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.6;
+    }
+}
+
+.switchOn {
+    border-color: $accent;
+    background: $accent;
+}
+
+.switchKnob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: $surface;
+    box-shadow: 0 1px 2px oklch(0.2 0.02 255 / 0.2);
+    transition: transform 0.15s ease;
+}
+
+.switchOn .switchKnob {
+    transform: translateX(16px);
+}
+
+.notice {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: $radius-md;
+    font-size: $fs-base;
+}
+
+.noticeOk {
+    background: $ok-bg;
+    color: $ok-fg;
+}
+
+.noticeBad {
+    background: $bad-bg;
+    color: $bad;
+}
+
+.actions {
+    display: flex;
+    gap: 12px;
+    padding-top: 4px;
+}
+
+.submit {
+    height: 46px;
+    padding: 0 24px;
+    border: 1px solid $accent;
+    border-radius: $radius-md;
+    background: $accent;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    font-weight: 500;
+    color: $on-accent;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover:not(:disabled) {
+        background: $accent-ink;
+        border-color: $accent-ink;
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.7;
+    }
+}
