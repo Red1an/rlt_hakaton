@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from sqlalchemy import select
 from typing import List
@@ -11,6 +12,7 @@ from requests import (
     GetSuppliersRequest,
     FindOKPDRequest
 )
+from search.routes import router as match_router
 
 
 load_dotenv()
@@ -25,6 +27,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(match_router)
 
 
 @app.post("/enrich")

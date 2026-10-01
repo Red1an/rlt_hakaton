@@ -1,10 +1,10 @@
 import argparse
 import hashlib
 import json
-import os
 import re
 import time
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -12,7 +12,9 @@ import httpx
 import psycopg
 from bs4 import BeautifulSoup
 from ddgs import DDGS
-from dotenv import load_dotenv
+
+from search.categories import detect_okpd
+from search.db import connect
 
 WORKER_DIR = Path(__file__).resolve().parent
 CACHE_DIR = WORKER_DIR / ".cache"
@@ -29,8 +31,10 @@ BLOCKED_DOMAINS = {
     "tiu.ru", "satom.ru", "blizko.ru", "spb.blizko.ru", "flagma.ru", "rusprofile.ru", "list-org.com",
     "checko.ru", "zachestnyibiznes.ru", "sbis.ru", "audit-it.ru", "zakupki.gov.ru", "hh.ru", "otzovik.com",
     "irecommend.ru", "aliexpress.ru", "megamarket.ru", "leroymerlin.ru", "vseinstrumenti.ru", "orgpage.ru",
-    "tradedir.ru", "optomtovar.ru", "postavshikov.net", "optlist.ru",
+    "tradedir.ru", "optomtovar.ru", "postavshikov.net", "optlist.ru", "metaprom.ru", "supl.biz",
 }
+
+ALLOWED_REGIONS = {"78", "47"}
 
 SUBPAGE_PATTERN = re.compile(r"контакты|реквизиты|о компании|о нас|contacts|about|kontakty|rekvizit|requisit", re.I)
 FALLBACK_PATHS = ["contacts/", "kontakty/", "rekvizity/"]
@@ -40,8 +44,8 @@ EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-zа-я]{2,}", re.I
 PHONE_PATTERN = re.compile(r"(?:\+7|8)[\s(-]*[3489]\d{2}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}")
 
 ROLE_KEYWORDS = [
-    ("manufacturer", ["собственное производство", "собственного производства", "наше производство", "завод", "фабрика"]),
-    ("distributor", ["официальный дистрибьютор", "дистрибьютор", "оптовые поставки", "оптом", "собственный склад"]),
+    ("manufacturer", ["собственное производство", "собственного производства", "наше производство", "производим"]),
+    ("distributor", ["официальный дистрибьютор", "официальный дилер", "дистрибьютор", "оптовые поставки", "собственный склад"]),
 ]
 
 EGRUL_URL = "https://egrul.nalog.ru/"
@@ -71,9 +75,9 @@ def cache_path(kind: str, key: str, suffix: str) -> Path:
     return path
 
 
-def search(query: str, max_results: int) -> list[str]:
+def search(query: str, max_results: int, refresh: bool = False) -> list[str]:
     path = cache_path("search", f"{query}|{max_results}", ".json")
-    if path.exists():
+    if path.exists() and not refresh:
         return json.loads(path.read_text(encoding="utf-8"))
     try:
         results = DDGS().text(query, region="ru-ru", max_results=max_results)
@@ -152,6 +156,13 @@ def org_name_near(text: str, inn: str) -> str | None:
     return best[1] if best else None
 
 
+def is_real_email(email: str) -> bool:
+    local, _, domain = email.lower().partition("@")
+    if domain.endswith((".png", ".jpg", ".svg", ".webp", ".gif")):
+        return False
+    return not local.isdigit() and not domain.split(".")[0].isdigit()
+
+
 def detect_role(text: str) -> tuple[str, str]:
     lowered = text.lower()
     for role, keywords in ROLE_KEYWORDS:
@@ -175,7 +186,7 @@ def analyze_site(client: httpx.Client, root_url: str) -> dict | None:
 
     name = org_name_near(text, inn) or site_title(main_html)
     role, role_reason = detect_role(text)
-    emails = sorted({e.lower() for e in EMAIL_PATTERN.findall(text) if not e.lower().endswith((".png", ".jpg", ".svg", ".webp"))})[:3]
+    emails = sorted({e.lower() for e in EMAIL_PATTERN.findall(text) if is_real_email(e)})[:3]
     phones = sorted({"7" + re.sub(r"\D", "", p)[-10:] for p in PHONE_PATTERN.findall(text)})[:3]
 
     return {
@@ -240,17 +251,9 @@ def verify(client: httpx.Client, company: dict) -> str | None:
         region=kpp[:2] if kpp and not kpp.startswith("99") else company["inn"][:2],
         region_name=record["region_name"],
     )
+    if company["region"] not in ALLOWED_REGIONS:
+        return f"не СПб и не ЛО ({record['region_name'] or company['region']})"
     return None
-
-
-def connection_info() -> str:
-    return psycopg.conninfo.make_conninfo(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", ""),
-        dbname=os.getenv("POSTGRES_DB", "postgres"),
-    )
 
 
 def save(conn: psycopg.Connection, companies: list[dict], okpd: str | None) -> None:
@@ -271,12 +274,18 @@ def save(conn: psycopg.Connection, companies: list[dict], okpd: str | None) -> N
     conn.commit()
 
 
-def discover(query: str, max_sites: int, known_inns: set[str]) -> list[dict]:
+def discover(
+    query: str,
+    max_sites: int,
+    known_inns: set[str],
+    refresh: bool = False,
+    progress: Callable[[int, int, int], None] | None = None,
+) -> list[dict]:
     roots = []
     for template in QUERY_TEMPLATES:
         search_query = template.format(query=query)
         print(f"Поиск: {search_query}")
-        for url in search(search_query, max_results=max_sites):
+        for url in search(search_query, max_results=max_sites, refresh=refresh):
             if not url.startswith("http"):
                 continue
             domain = domain_of(url)
@@ -287,7 +296,10 @@ def discover(query: str, max_sites: int, known_inns: set[str]) -> list[dict]:
     companies = []
     seen_inns = set()
     with httpx.Client(headers=HEADERS, timeout=10, follow_redirects=True) as client:
-        for root in roots[:max_sites]:
+        targets = roots[:max_sites]
+        for checked, root in enumerate(targets, start=1):
+            if progress:
+                progress(checked, len(targets), len(companies))
             company = analyze_site(client, root)
             if company is None:
                 print(f"  {root}: ИНН не найден")
@@ -306,21 +318,27 @@ def discover(query: str, max_sites: int, known_inns: set[str]) -> list[dict]:
 
 
 def main() -> None:
-    load_dotenv(WORKER_DIR.parent / ".env")
     parser = argparse.ArgumentParser(description="Поиск новых поставщиков в интернете")
     parser.add_argument("--query", required=True, help="что ищем, например «бумага офисная»")
-    parser.add_argument("--okpd", help="код ОКПД2 категории, сохраняется в suppliers.okpds")
+    parser.add_argument("--okpd", help="код ОКПД2 категории; если не указан, определяется по товарам в базе")
     parser.add_argument("--max-sites", type=int, default=20)
     parser.add_argument("--dry-run", action="store_true", help="не подключаться к базе, только вывести результат")
+    parser.add_argument("--refresh", action="store_true", help="искать заново, мимо кеша поисковика")
     args = parser.parse_args()
 
     if args.dry_run:
-        companies = discover(args.query, args.max_sites, set())
+        companies = discover(args.query, args.max_sites, set(), args.refresh)
     else:
-        with psycopg.connect(connection_info()) as conn:
+        with connect() as conn:
+            okpd = args.okpd
+            if okpd is None:
+                candidates = detect_okpd(conn, args.query)
+                okpd = candidates[0][0] if candidates else None
+                print("Категории по товарам в базе: " + (", ".join(f"{code} ({count})" for code, count in candidates) or "не найдены"))
+            print(f"Категория ОКПД2: {okpd or 'не определена'}")
             known_inns = {row[0] for row in conn.execute("SELECT inn FROM suppliers")}
-            companies = discover(args.query, args.max_sites, known_inns)
-            save(conn, companies, args.okpd)
+            companies = discover(args.query, args.max_sites, known_inns, args.refresh)
+            save(conn, companies, okpd)
 
     print(f"\nНовых поставщиков: {len(companies)}")
     print(json.dumps(companies, ensure_ascii=False, indent=2))
