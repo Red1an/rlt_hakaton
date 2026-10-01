@@ -138,6 +138,7 @@ export default function MainPage() {
 
                         { hasSearched && (
                             <VariantsWidget
+                                key={ activeLotId }
                                 shortListIds={ activeShortListIds }
                                 onToggleShortList={ toggleShortList }
                             />

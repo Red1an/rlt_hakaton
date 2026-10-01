@@ -1,9 +1,11 @@
+import json
 import math
 from datetime import date
 
 import psycopg
 
 from search.categories import detect_okpd
+from worker.discover import CACHE_DIR
 
 LOCAL_REGIONS = {"78": "Из Санкт-Петербурга", "47": "Из Ленинградской области"}
 REGION_NAMES = {"78": "Санкт-Петербург", "47": "Ленинградская область"}
@@ -11,12 +13,16 @@ ROLE_CODES = {"manufacturer": "man", "distributor": "dist", "supplier": "sup"}
 NEW_ROLE_SCORES = {"man": 60, "dist": 55, "sup": 50}
 PLATFORM_LABELS = {True: "Электронный магазин", False: "АИС ГЗ"}
 CONTENDER_SLOTS = 5
+HISTORY_ROWS = 5
+EMPTY = "—"
+
+SIMILAR_LOTS_SQL = """
+    CREATE TEMP TABLE similar_lots ON COMMIT DROP AS
+    SELECT DISTINCT lot_id FROM lots WHERE okpd_code LIKE %(prefix)s
+"""
 
 HISTORY_SQL = """
-    WITH similar_lots AS (
-        SELECT DISTINCT lot_id FROM lots WHERE okpd_code LIKE %(prefix)s
-    ),
-    stats AS (
+    WITH stats AS (
         SELECT
             b.supplier_inn,
             count(*)                                                    AS part,
@@ -42,10 +48,25 @@ HISTORY_SQL = """
 """
 
 NEW_SQL = """
-    SELECT inn, kpp, name, role, role_reason, site
+    SELECT inn, kpp, name, role, role_reason, site, contacts
     FROM suppliers
     WHERE source = 'web'
       AND EXISTS (SELECT 1 FROM unnest(okpds) code WHERE code LIKE %(prefix)s OR %(okpd)s LIKE code || '%%')
+"""
+
+
+LOT_HISTORY_SQL = """
+    SELECT inn, subject, start_price, customer_inn, is_winner
+    FROM (
+        SELECT
+            b.supplier_inn AS inn, a.subject, a.start_price, a.customer_inn, b.is_winner,
+            row_number() OVER (PARTITION BY b.supplier_inn ORDER BY a.publish_date DESC) AS position
+        FROM bids b
+        JOIN similar_lots s ON s.lot_id = b.lot_id
+        JOIN announcements a ON a.lot_id = b.lot_id
+        WHERE b.supplier_inn = ANY(%(inns)s)
+    ) ranked
+    WHERE position <= %(rows)s
 """
 
 
@@ -61,6 +82,33 @@ def ago(days: int) -> str:
     if days < 365:
         return f"{days // 30} мес. назад"
     return f"{days // 365} г. назад"
+
+
+def egrul_record(inn: str) -> dict:
+    path = CACHE_DIR / "egrul" / f"{inn}.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8")) or {}
+
+
+def requisites_for(inn: str, kpp: str | None, contacts: dict | None = None) -> dict:
+    record = egrul_record(inn)
+    region = region_code(inn, kpp)
+    contacts = contacts or {}
+    return {
+        "kpp": kpp or record.get("kpp") or EMPTY,
+        "ogrn": record.get("ogrn") or EMPTY,
+        "okved": EMPTY,
+        "region": REGION_NAMES.get(region) or record.get("region_name") or f"Регион {region}",
+        "phone": ", ".join(contacts.get("phones", [])) or EMPTY,
+        "email": ", ".join(contacts.get("emails", [])) or EMPTY,
+    }
+
+
+def site_without_protocol(site: str | None) -> str:
+    if not site:
+        return ""
+    return site.split("://", 1)[-1].rstrip("/")
 
 
 def flags_for(inn: str, kpp: str | None, is_msp: bool) -> list[str]:
@@ -117,13 +165,16 @@ def history_item(row: tuple, reference: date, eshop: bool) -> dict:
         "wins": wins,
         "last": ago(days),
         "why": why[:3],
+        "site": "",
+        "requisites": requisites_for(inn, kpp),
+        "history": [],
         "isMsp": is_msp,
         "isContender": part >= 3 and win_share < 0.2,
     }
 
 
 def new_item(row: tuple) -> dict:
-    inn, kpp, name, role, role_reason, site = row
+    inn, kpp, name, role, role_reason, site, contacts = row
     role_code = ROLE_CODES.get(role, "sup")
     region = region_code(inn, kpp)
     why = [["✦", "Нет в истории госзакупок, найден в открытых источниках"]]
@@ -142,7 +193,9 @@ def new_item(row: tuple) -> dict:
         "wins": 0,
         "last": "—",
         "why": why,
-        "site": site,
+        "site": site_without_protocol(site),
+        "requisites": requisites_for(inn, kpp, json.loads(contacts) if contacts else None),
+        "history": [],
         "isMsp": None,
     }
 
@@ -163,6 +216,7 @@ def recommend(
 
     params = {"prefix": f"{okpd}%", "okpd": okpd, "eshop": eshop, "candidates": limit * 5}
     reference = conn.execute("SELECT max(publish_date) FROM announcements").fetchone()[0]
+    conn.execute(SIMILAR_LOTS_SQL, params)
 
     history = [history_item(row, reference, eshop) for row in conn.execute(HISTORY_SQL, params)]
     if msp_only:
@@ -172,6 +226,17 @@ def recommend(
     contenders = [item for item in rest if item["isContender"]][:CONTENDER_SLOTS]
     fill = [item for item in rest if item not in contenders][: limit - len(top) - len(contenders)]
     history = top + contenders + fill
+
+    by_inn = {item["inn"]: item for item in history}
+    for inn, subject, start_price, customer_inn, is_winner in conn.execute(
+        LOT_HISTORY_SQL, {"inns": list(by_inn), "rows": HISTORY_ROWS}
+    ):
+        by_inn[inn]["history"].append({
+            "subject": subject,
+            "nmck": round(start_price),
+            "customer": f"Заказчик ИНН {customer_inn}",
+            "won": is_winner,
+        })
 
     new = sorted((new_item(row) for row in conn.execute(NEW_SQL, params)), key=lambda item: item["score"], reverse=True)
 
@@ -185,4 +250,5 @@ def fill_names(conn: psycopg.Connection, items: list[dict]) -> list[dict]:
         for item in items:
             if item["inn"] in names:
                 item["name"] = names[item["inn"]]
+                item["requisites"]["ogrn"] = egrul_record(item["inn"]).get("ogrn") or EMPTY
     return items
