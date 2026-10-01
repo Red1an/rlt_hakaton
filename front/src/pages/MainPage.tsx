@@ -62,15 +62,11 @@ export default function MainPage() {
         setHasSearched(true);
     }
 
-    /**
-     * Возврат из шорт-листа в подбор с параметрами лота. Автоподбор гасим:
-     * категория лота уже выбрана, и подбор по описанию её перетёр бы.
-     */
+    /** Возврат из шорт-листа в подбор с параметрами лота. */
     function handleOpenLot(lot: ProcurementLot) {
         setMatch((prev) => ({
             ...prev,
             values: lot.values,
-            isAutoDetect: false,
             isCollapsed: false,
         }));
         setActiveLotId(lot.id);
@@ -154,7 +150,7 @@ export default function MainPage() {
                         onOpenLot={ handleOpenLot }
                         onBackToMatch={ handleBackToMatch }
                     />
-                ) : screen }
+                ) : null }
             </main>
         </div>
     );

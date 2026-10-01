@@ -8,7 +8,6 @@ export {
     INITIAL_MATCH_STATE,
     INITIAL_MATCH_VALUES,
     ROLE_LABELS,
-    detectCategory,
     fetchCategories,
     fetchVariants,
     searchCategories,

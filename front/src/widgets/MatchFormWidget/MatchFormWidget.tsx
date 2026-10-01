@@ -12,14 +12,8 @@ import type {
 
 import styles from "./MatchFormWidget.module.scss";
 
-/** Пауза перед автоподбором, чтобы не дёргать api на каждое нажатие клавиши. */
-const DETECT_DEBOUNCE_MS = 400;
-
 /** Пауза перед поиском по справочнику категорий. */
 const SEARCH_DEBOUNCE_MS = 300;
-
-/** Ниже этой длины описание не даёт оснований для подбора. */
-const MIN_DETECT_LENGTH = 3;
 
 const PLATFORM_OPTIONS: Array<{ value: MatchPlatform; label: string }> = [
     {
@@ -51,31 +45,21 @@ export default function MatchFormWidget({
     state, onChange, onSearched,
 }: MatchFormWidgetProps) {
     const {
-        values, isAutoDetect, isCollapsed,
+        values, isCollapsed,
     } = state;
     const [ categories, setCategories ] = useState<OkpdCategory[]>([]);
     const [ categoryTerm, setCategoryTerm ] = useState("");
     const [ isCategoryOpen, setIsCategoryOpen ] = useState(false);
     const [ isCategoryLoading, setIsCategoryLoading ] = useState(false);
-    const [ isDetecting, setIsDetecting ] = useState(false);
     const [ isSubmitting, setIsSubmitting ] = useState(false);
     const [ notice, setNotice ] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
-    // Обёртки стабильны по onChange, иначе эффект автоподбора
-    // перезапускался бы на каждом рендере.
     const setValues = useCallback((update: (prev: MatchFormValues) => MatchFormValues) => {
         onChange((prev) => ({
             ...prev,
             values: update(prev.values),
         }));
     }, [ onChange ]);
-
-    function setIsAutoDetect(value: boolean) {
-        onChange((prev) => ({
-            ...prev,
-            isAutoDetect: value,
-        }));
-    }
 
     function setIsCollapsed(value: boolean) {
         onChange((prev) => ({
@@ -86,12 +70,7 @@ export default function MatchFormWidget({
 
     const categoryRef = useRef<HTMLDivElement>(null);
     const categorySearchRef = useRef<HTMLInputElement>(null);
-    /**
-     * Счётчик запросов автоподбора: ответ приходит через ~400 мс, как и debounce,
-     * поэтому без проверки id поздний ответ по старому тексту перетрёт свежий.
-     */
-    const detectRequestId = useRef(0);
-    /** Счётчик запросов поиска по справочнику — по той же причине. */
+    /** Счётчик запросов поиска по справочнику: поздний ответ не должен перетереть свежий. */
     const searchRequestId = useRef(0);
 
     useEffect(() => {
@@ -165,91 +144,11 @@ export default function MatchFormWidget({
         };
     }, [ categoryTerm, isCategoryOpen ]);
 
-    useEffect(() => {
-        const query = values.query.trim();
-
-        // Инвалидируем предыдущий подбор при любом изменении текста или режима:
-        // иначе ответ по старому запросу перетрёт свежий либо ручной выбор.
-        detectRequestId.current += 1;
-        const requestId = detectRequestId.current;
-
-        if (!isAutoDetect) {
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            if (requestId !== detectRequestId.current) {
-                return;
-            }
-
-            if (query.length < MIN_DETECT_LENGTH) {
-                setIsDetecting(false);
-                setValues((prev) => ({
-                    ...prev,
-                    category: null,
-                }));
-
-                return;
-            }
-
-            setIsDetecting(true);
-
-            void matchService.detectCategory(query)
-                .then((detected) => {
-                    if (requestId !== detectRequestId.current) {
-                        return;
-                    }
-
-                    setValues((prev) => ({
-                        ...prev,
-                        category: detected,
-                    }));
-                })
-                .catch(() => {
-                    // Молча: во время набора текста ошибка подбора не должна мигать.
-                    if (requestId !== detectRequestId.current) {
-                        return;
-                    }
-
-                    setValues((prev) => ({
-                        ...prev,
-                        category: null,
-                    }));
-                })
-                .finally(() => {
-                    if (requestId === detectRequestId.current) {
-                        setIsDetecting(false);
-                    }
-                });
-        }, DETECT_DEBOUNCE_MS);
-
-        return () => {
-            clearTimeout(timer);
-        };
-    }, [ isAutoDetect, setValues, values.query ]);
-
     function setValue<K extends keyof MatchFormValues>(key: K, value: MatchFormValues[K]) {
         setValues((prev) => ({
             ...prev,
             [key]: value,
         }));
-        setNotice(null);
-    }
-
-    function patchQuery(value: string) {
-        setValues((prev) => ({
-            ...prev,
-            query: value,
-            // При ручном режиме выбор пользователя не трогаем — автоподбор выключен.
-            category: isAutoDetect ? null : prev.category,
-        }));
-        setNotice(null);
-    }
-
-    /** Снимает автоподбор: ручной выбор не должен перетираться новым подбором. */
-    function disableAutoDetect() {
-        setIsDetecting(false);
-        setIsAutoDetect(false);
         setNotice(null);
     }
 
@@ -279,6 +178,15 @@ export default function MatchFormWidget({
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+
+        if (values.category === null) {
+            setNotice({
+                tone: "bad",
+                text: "Выберите категорию ОКПД2",
+            });
+
+            return;
+        }
 
         setNotice(null);
         setIsSubmitting(true);
@@ -312,21 +220,18 @@ export default function MatchFormWidget({
                     <div className={styles.summaryHead}>
                         <span className={styles.summaryLabel}>Вы закупаете</span>
 
-                        <span className={styles.summaryQuery}>{ values.query.trim() }</span>
+                        { values.category && (
+                            <span className={styles.summaryCategory}>
+                                <span className={styles.summaryCode}>
+                                    { values.category.code }
+                                </span>
+
+                                { values.category.name }
+                            </span>
+                        ) }
                     </div>
 
                     <div className={styles.summaryMeta}>
-                        { values.category && (
-                            <span className={styles.summaryItem}>
-                                <span className={styles.summaryCategory}>
-                                    <span className={styles.summaryCode}>
-                                        { values.category.code }
-                                    </span>
-
-                                    { values.category.name }
-                                </span>
-                            </span>
-                        ) }
 
                         { values.nmck !== "" && (
                             <span className={styles.summaryItem}>
@@ -340,6 +245,10 @@ export default function MatchFormWidget({
 
                         { values.mspOnly && (
                             <span className={styles.summaryItem}>только МСП</span>
+                        ) }
+
+                        { values.searchNew && (
+                            <span className={styles.summaryItem}>с поиском новых</span>
                         ) }
                     </div>
                 </div>
@@ -360,18 +269,6 @@ export default function MatchFormWidget({
             <h1 className={styles.title}>Что вы закупаете?</h1>
 
             <form className={styles.form} onSubmit={handleSubmit}>
-                <label className={styles.field}>
-                    <span className={styles.label}>Описание закупки</span>
-
-                    <input
-                        className={styles.queryInput}
-                        type="text"
-                        value={ values.query }
-                        placeholder="Например: бумага для офисной техники А4, 80 г/м², 600 пачек"
-                        onChange={(event) => patchQuery(event.target.value)}
-                    />
-                </label>
-
                 <div className={styles.field}>
                     <span className={styles.label}>Категория ОКПД2</span>
 
@@ -384,23 +281,21 @@ export default function MatchFormWidget({
                                 aria-haspopup="listbox"
                                 onClick={openCategoryList}
                             >
-                                { isDetecting
-                                    ? "Определяем категорию…"
-                                    : values.category === null
-                                        ? <span className={styles.categoryEmpty}>
-                                            Категория не выбрана
-                                        </span>
-                                        : (
-                                            <>
-                                                <span className={styles.categoryCode}>
-                                                    { values.category.code }
-                                                </span>
+                                { values.category === null
+                                    ? <span className={styles.categoryEmpty}>
+                                        Категория не выбрана
+                                    </span>
+                                    : (
+                                        <>
+                                            <span className={styles.categoryCode}>
+                                                { values.category.code }
+                                            </span>
 
-                                                <span className={styles.categoryName}>
-                                                    { values.category.name }
-                                                </span>
-                                            </>
-                                        ) }
+                                            <span className={styles.categoryName}>
+                                                { values.category.name }
+                                            </span>
+                                        </>
+                                    ) }
 
                                 <span className={styles.categoryCaret}>▾</span>
                             </button>
@@ -446,9 +341,6 @@ export default function MatchFormWidget({
                                                             setValue("category", item);
                                                             setIsCategoryOpen(false);
                                                             setCategoryTerm("");
-                                                            // Ручной выбор снимает автоподбор, иначе
-                                                            // следующая правка описания его перетрёт.
-                                                            disableAutoDetect();
                                                         }}
                                                     >
                                                         <span className={styles.categoryCode}>
@@ -464,42 +356,10 @@ export default function MatchFormWidget({
                                 </div>
                             ) }
                         </div>
-
-                        <div className={styles.autoRow}>
-                            <button
-                                className={ `${ styles.switchSmall } ${
-                                    isAutoDetect ? styles.switchSmallOn : ""
-                                }` }
-                                type="button"
-                                role="switch"
-                                aria-checked={ isAutoDetect }
-                                aria-label="Подбирать категорию автоматически"
-                                onClick={() => {
-                                    // Индикатор гасим здесь, а не в эффекте:
-                                    // переключение не должно ждать debounce.
-                                    if (isAutoDetect) {
-                                        disableAutoDetect();
-
-                                        return;
-                                    }
-
-                                    setIsAutoDetect(true);
-                                    setNotice(null);
-                                }}
-                            >
-                                <span className={styles.switchSmallKnob} />
-                            </button>
-
-                            <span className={styles.autoLabel}>Подбирать автоматически</span>
-                        </div>
                     </div>
 
                     <p className={styles.hint}>
-                        { isDetecting
-                            ? "Подбирается по описанию…"
-                            : isAutoDetect
-                                ? "Подбирается по описанию. Можно изменить вручную."
-                                : "Автоподбор выключен — выберите категорию вручную." }
+                        Найдите по коду или названию, например «17.12» или «бумага».
                     </p>
                 </div>
 
@@ -552,6 +412,24 @@ export default function MatchFormWidget({
                             <span className={styles.switchKnob} />
                         </button>
                     </div>
+
+                    <div className={ `${ styles.field } ${ styles.fieldMsp }` }>
+                        <span className={styles.label}>Искать новых</span>
+
+                        <button
+                            className={ `${ styles.switch } ${
+                                values.searchNew ? styles.switchOn : ""
+                            }` }
+                            type="button"
+                            role="switch"
+                            aria-checked={ Boolean(values.searchNew) }
+                            aria-label="Искать новых поставщиков в открытых источниках"
+                            title="Поиск в интернете и проверка по ЕГРЮЛ, до 3 минут"
+                            onClick={() => setValue("searchNew", !values.searchNew)}
+                        >
+                            <span className={styles.switchKnob} />
+                        </button>
+                    </div>
                 </div>
 
                 { notice && (
@@ -565,10 +443,12 @@ export default function MatchFormWidget({
 
                 <div className={styles.actions}>
                     <button className={styles.submit} type="submit" disabled={ isSubmitting }>
-                        { isSubmitting ? "Подбираем…" : "Подобрать поставщиков" }
+                        { isSubmitting
+                            ? values.searchNew ? "Ищем новых поставщиков, до 3 минут…" : "Подбираем…"
+                            : "Подобрать поставщиков" }
                     </button>
 
-                    { values.query.trim() !== "" && (
+                    { values.category !== null && (
                         <button
                             className={styles.collapseBtn}
                             type="button"

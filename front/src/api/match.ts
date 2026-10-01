@@ -1,8 +1,9 @@
 import { apiClient } from "./client";
+
+const SEARCH_TIMEOUT_MS = 60_000;
+const SEARCH_NEW_TIMEOUT_MS = 300_000;
 import type {
     CategoryDto,
-    DetectCategoryRequestDto,
-    DetectCategoryResponseDto,
     FetchCategoriesParams,
     SearchSuppliersRequestDto,
     SearchSuppliersResponseDto,
@@ -23,18 +24,6 @@ export async function fetchCategories(params: FetchCategoriesParams = {}): Promi
     return data;
 }
 
-/** Автоподбор категории ОКПД2 по тексту описания. */
-export async function detectCategory(
-    query: DetectCategoryRequestDto,
-): Promise<DetectCategoryResponseDto> {
-    const { data } = await apiClient.post<DetectCategoryResponseDto>(
-        "/match/detect-category",
-        query,
-    );
-
-    return data;
-}
-
 /** Отправка формы подбора поставщиков. */
 export async function searchSuppliers(
     payload: SearchSuppliersRequestDto,
@@ -42,6 +31,7 @@ export async function searchSuppliers(
     const { data } = await apiClient.post<SearchSuppliersResponseDto>(
         "/match/search",
         payload,
+        { timeout: payload.searchNew ? SEARCH_NEW_TIMEOUT_MS : SEARCH_TIMEOUT_MS },
     );
 
     return data;

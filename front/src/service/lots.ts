@@ -25,7 +25,6 @@ function hash(value: string): string {
  */
 export function lotIdFromValues(values: MatchFormValues): string {
     const signature = [
-        values.query.trim().toLowerCase(),
         values.category?.code ?? "",
         values.nmck.replace(/\s/g, ""),
         values.platform,
@@ -41,13 +40,9 @@ export function shortListCommentKey(lotId: string, supplierId: string): string {
 }
 
 function lotTitle(values: MatchFormValues): string {
-    const query = values.query.trim();
+    const title = values.category?.name ?? "Без категории";
 
-    if (query === "") {
-        return values.category?.name ?? "Без описания";
-    }
-
-    return query.length > LOT_TITLE_LIMIT ? `${ query.slice(0, LOT_TITLE_LIMIT) }…` : query;
+    return title.length > LOT_TITLE_LIMIT ? `${ title.slice(0, LOT_TITLE_LIMIT) }…` : title;
 }
 
 /**

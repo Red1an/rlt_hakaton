@@ -15,26 +15,20 @@ export interface FetchCategoriesParams {
     q?: string;
 }
 
-/** Тело запроса подбора категории по описанию. */
-export interface DetectCategoryRequestDto {
-    query: string;
-}
-
-/** Ответ подбора категории. */
-export type DetectCategoryResponseDto = CategoryDto | null;
-
 /** Тело запроса поиска поставщиков. */
 export interface SearchSuppliersRequestDto {
-    query: string;
+    category: string;
     nmck: number;
     platform: "ais" | "em";
     mspOnly: boolean;
+    searchNew: boolean;
 }
 
 /** Ответ поиска поставщиков. */
 export interface SearchSuppliersResponseDto {
     requestId: string;
     total: number;
+    newFound: number;
 }
 
 /** Роль компании на рынке категории. */

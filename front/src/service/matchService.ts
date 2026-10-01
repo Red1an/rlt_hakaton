@@ -14,11 +14,11 @@ export type MatchPlatform = "ais" | "em";
 
 /** Значения формы «Что вы закупаете?». */
 export interface MatchFormValues {
-    query: string;
     category: OkpdCategory | null;
     nmck: string;
     platform: MatchPlatform;
     mspOnly: boolean;
+    searchNew: boolean;
 }
 
 /**
@@ -27,8 +27,6 @@ export interface MatchFormValues {
  */
 export interface MatchFormState {
     values: MatchFormValues;
-    /** Категория подбирается автоматически по описанию. */
-    isAutoDetect: boolean;
     /** Форма свёрнута в строку-сводку. */
     isCollapsed: boolean;
 }
@@ -38,7 +36,7 @@ export interface ProcurementLot {
     id: string;
     /** Номер для шапки таблицы: Л-2026-0418. */
     num: string;
-    /** Описание закупки, обрезанное для шапки. */
+    /** Название категории, обрезанное для шапки. */
     title: string;
     /** НМЦК в виде, в котором его вводят в форме. */
     nmck: string;
@@ -53,16 +51,15 @@ export interface ShortListEntry {
 }
 
 export const INITIAL_MATCH_VALUES: MatchFormValues = {
-    query: "",
     category: null,
     nmck: "",
     platform: "em",
     mspOnly: false,
+    searchNew: false,
 };
 
 export const INITIAL_MATCH_STATE: MatchFormState = {
     values: INITIAL_MATCH_VALUES,
-    isAutoDetect: true,
     isCollapsed: false,
 };
 
@@ -161,30 +158,21 @@ export async function searchCategories(term: string): Promise<OkpdCategory[]> {
     return (await matchApi.fetchCategories({ q: trimmed })).map(toCategory);
 }
 
-/** Автоподбор категории по описанию. Пустая категория — подбор не удался. */
-export async function detectCategory(query: string): Promise<OkpdCategory | null> {
-    const detected = await matchApi.detectCategory({ query });
-
-    if (detected === null) {
-        return null;
-    }
-
-    return toCategory(detected);
-}
-
 /** Отправка формы. Валидацию полей берёт на себя бэкенд, его сообщения пробрасываются. */
 export async function submitSearch(values: MatchFormValues): Promise<MatchSearchResult> {
     const result = await matchApi.searchSuppliers({
-        query: values.query.trim(),
+        category: values.category?.code ?? "",
         nmck: Number(values.nmck.replace(/\s/g, "")),
         platform: values.platform,
         mspOnly: values.mspOnly,
+        searchNew: Boolean(values.searchNew),
     });
+    const newPart = values.searchNew ? `, новых в открытых источниках: ${ result.newFound }` : "";
 
     return {
         requestId: result.requestId,
         total: result.total,
-        message: `Подбор завершён: найдено ${ result.total } поставщиков по площадке «${ PLATFORM_LABELS[values.platform] }»`,
+        message: `Подбор завершён: найдено ${ result.total } поставщиков по площадке «${ PLATFORM_LABELS[values.platform] }»${ newPart }`,
     };
 }
 

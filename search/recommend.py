@@ -4,7 +4,6 @@ from datetime import date
 
 import psycopg
 
-from search.categories import detect_okpd
 from worker.discover import CACHE_DIR
 
 LOCAL_REGIONS = {"78": "Из Санкт-Петербурга", "47": "Из Ленинградской области"}
@@ -28,7 +27,8 @@ HISTORY_SQL = """
             count(*)                                                    AS part,
             count(*) FILTER (WHERE b.is_winner)                         AS wins,
             max(a.publish_date)                                         AS last_date,
-            count(*) FILTER (WHERE a.is_eshop_or_aisgz = %(eshop)s)     AS same_platform
+            count(*) FILTER (WHERE a.is_eshop_or_aisgz = %(eshop)s)     AS same_platform,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY a.start_price)  AS typical_price
         FROM bids b
         JOIN similar_lots s ON s.lot_id = b.lot_id
         JOIN announcements a ON a.lot_id = b.lot_id
@@ -37,7 +37,7 @@ HISTORY_SQL = """
         LIMIT %(candidates)s
     )
     SELECT
-        st.supplier_inn, st.part, st.wins, st.last_date, st.same_platform,
+        st.supplier_inn, st.part, st.wins, st.last_date, st.same_platform, st.typical_price,
         s.name, s.kpp, s.role, s.role_reason,
         EXISTS (
             SELECT 1 FROM bids b2 JOIN announcements a2 ON a2.lot_id = b2.lot_id
@@ -111,6 +111,18 @@ def site_without_protocol(site: str | None) -> str:
     return site.split("://", 1)[-1].rstrip("/")
 
 
+def money(value: float) -> str:
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f} млн ₽".replace(".", ",")
+    return f"{round(value / 1000)} тыс. ₽"
+
+
+def price_fit(nmck: float | None, typical_price: float | None) -> float | None:
+    if not nmck or not typical_price:
+        return None
+    return max(0.0, 1 - abs(math.log10(nmck / typical_price)) / 2)
+
+
 def flags_for(inn: str, kpp: str | None, is_msp: bool) -> list[str]:
     flags = []
     if is_msp:
@@ -122,18 +134,20 @@ def flags_for(inn: str, kpp: str | None, is_msp: bool) -> list[str]:
     return flags
 
 
-def history_item(row: tuple, reference: date, eshop: bool) -> dict:
-    inn, part, wins, last_date, same_platform, name, kpp, role, role_reason, is_msp = row
+def history_item(row: tuple, reference: date, eshop: bool, nmck: float | None) -> dict:
+    inn, part, wins, last_date, same_platform, typical_price, name, kpp, role, role_reason, is_msp = row
     days = (reference - last_date).days
     win_share = wins / part
     region = region_code(inn, kpp)
+    fit = price_fit(nmck, typical_price)
 
     score = round(
-        30 * min(1.0, math.log1p(part) / math.log1p(300))
-        + 30 * (wins + 1) / (part + 2)
+        25 * min(1.0, math.log1p(part) / math.log1p(300))
+        + 25 * (wins + 1) / (part + 2)
         + 20 * max(0.0, 1 - days / 730)
         + 10 * (region in LOCAL_REGIONS)
         + 10 * same_platform / part
+        + 10 * (fit if fit is not None else 0.5)
     )
 
     why = []
@@ -145,6 +159,8 @@ def history_item(row: tuple, reference: date, eshop: bool) -> dict:
         why.append(["↻", f"Подал {part} заявок, побед: {wins}, готов конкурировать"])
     else:
         why.append(["★", f"Участвовал в {part} похожих лотах, побед: {wins}"])
+    if fit is not None and fit >= 0.75:
+        why.append(["₽", f"Обычно участвует в лотах около {money(typical_price)}"])
     if days <= 30:
         why.append(["↻", "Активен в последний месяц"])
     why.append(["⌖", LOCAL_REGIONS.get(region, f"Иногородний, регион {region}")])
@@ -202,23 +218,17 @@ def new_item(row: tuple) -> dict:
 
 def recommend(
     conn: psycopg.Connection,
-    query: str,
-    okpd: str | None = None,
+    okpd: str,
+    nmck: float | None = None,
     eshop: bool = False,
     msp_only: bool = False,
     limit: int = 30,
 ) -> dict:
-    if okpd is None:
-        candidates = detect_okpd(conn, query)
-        okpd = candidates[0][0] if candidates else None
-    if okpd is None:
-        return {"okpd": None, "items": []}
-
     params = {"prefix": f"{okpd}%", "okpd": okpd, "eshop": eshop, "candidates": limit * 5}
     reference = conn.execute("SELECT max(publish_date) FROM announcements").fetchone()[0]
     conn.execute(SIMILAR_LOTS_SQL, params)
 
-    history = [history_item(row, reference, eshop) for row in conn.execute(HISTORY_SQL, params)]
+    history = [history_item(row, reference, eshop, nmck) for row in conn.execute(HISTORY_SQL, params)]
     if msp_only:
         history = [item for item in history if item["isMsp"]]
     history = sorted(history, key=lambda item: item["score"], reverse=True)

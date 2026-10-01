@@ -4,8 +4,6 @@ import type {
 } from "./types";
 import type {
     CategoryDto,
-    DetectCategoryRequestDto,
-    DetectCategoryResponseDto,
     SearchSuppliersRequestDto,
     SearchSuppliersResponseDto,
     SupplierRequisitesDto,
@@ -65,41 +63,6 @@ function matchesCategory(category: CategoryDto, term: string): boolean {
         || category.name.toLowerCase().includes(needle);
 }
 
-const CATEGORY_NAMES = new Map(CATEGORIES.map((item) => [ item.code, item.name ]));
-
-/** Категория по умолчанию — бумага для печати, как в макете. */
-const DEFAULT_CATEGORY = CATEGORIES[0];
-
-/**
- * Правила подбора категории по ключевым словам описания.
- * Перенесены из метода okpdCode() исходного макета.
- */
-const KEYWORD_RULES: Array<{ code: string; words: string[] }> = [
-    {
-        code: "28.23.25",
-        words: [ "картридж" ],
-    },
-    {
-        code: "31.01.12",
-        words: [ "мебел", "стол", "стул" ],
-    },
-    {
-        code: "22.19.60",
-        words: [ "перчат" ],
-    },
-    {
-        code: "10.51.11",
-        words: [ "молок", "питан", "продукт" ],
-    },
-    {
-        code: "10.71.11",
-        words: [ "хлеб" ],
-    },
-];
-
-/** Ниже этой длины описание не даёт оснований для подбора. */
-const MIN_QUERY_LENGTH = 3;
-
 /** Справочник категорий с фильтрацией по query-параметру `q`. */
 const handleCategories: MockHandler = (request: MockRequest) => {
     const term = request.query.q ?? "";
@@ -107,35 +70,14 @@ const handleCategories: MockHandler = (request: MockRequest) => {
     return CATEGORIES.filter((category) => matchesCategory(category, term));
 };
 
-const handleDetectCategory: MockHandler = (request: MockRequest): DetectCategoryResponseDto => {
-    const { query = "" } = (request.body ?? {}) as DetectCategoryRequestDto;
-    const normalized = String(query).trim().toLowerCase();
-
-    if (normalized.length < MIN_QUERY_LENGTH) {
-        throw new MockError(422, "Слишком короткое описание закупки");
-    }
-
-    const matched = KEYWORD_RULES.find((rule) =>
-        rule.words.some((word) => normalized.includes(word)),
-    );
-
-    const code = matched?.code ?? DEFAULT_CATEGORY.code;
-
-    return {
-        code,
-        name: CATEGORY_NAME_OF(code),
-    };
-};
-
 const handleSearch: MockHandler = (request: MockRequest): SearchSuppliersResponseDto => {
     const {
-        query = "", nmck = 0,
+        category = "", nmck = 0,
     } = (request.body ?? {}) as SearchSuppliersRequestDto;
-    const trimmed = String(query).trim();
     const price = Number(nmck);
 
-    if (!trimmed) {
-        throw new MockError(422, "Укажите, что вы закупаете");
+    if (!String(category).trim()) {
+        throw new MockError(422, "Выберите категорию ОКПД2");
     }
 
     if (!Number.isFinite(price) || price <= 0) {
@@ -145,12 +87,9 @@ const handleSearch: MockHandler = (request: MockRequest): SearchSuppliersRespons
     return {
         requestId: `req-${ Date.now() }`,
         total: 47,
+        newFound: 0,
     };
 };
-
-function CATEGORY_NAME_OF(code: string): string {
-    return CATEGORY_NAMES.get(code) ?? DEFAULT_CATEGORY.name;
-}
 
 /**
  * Варианты поставщиков. Перенесены из макета «Подбор поставщиков (офлайн)»;
@@ -476,11 +415,6 @@ export const mockRoutes: MockRoute[] = [
         method: "get",
         pattern: /^\/match\/variants$/,
         handler: handleVariants,
-    },
-    {
-        method: "post",
-        pattern: /^\/match\/detect-category$/,
-        handler: handleDetectCategory,
     },
     {
         method: "post",

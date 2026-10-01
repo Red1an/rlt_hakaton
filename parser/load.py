@@ -7,6 +7,8 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
+from okpd import load_classifier
+
 PARSER_DIR = Path(__file__).resolve().parent
 SQL_DIR = PARSER_DIR / "sql"
 CHUNK_SIZE = 1 << 20
@@ -112,6 +114,7 @@ def main() -> None:
         for table, files in sources.items():
             for path in files:
                 copy_csv(conn, table, path)
+        print(f"Справочник ОКПД2: {load_classifier(conn)} кодов")
         run_sql_file(conn, "load.sql")
         conn.commit()
 
