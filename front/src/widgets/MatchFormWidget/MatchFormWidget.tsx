@@ -59,6 +59,7 @@ export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
     const [ isAutoDetect, setIsAutoDetect ] = useState(true);
     const [ isDetecting, setIsDetecting ] = useState(false);
     const [ isSubmitting, setIsSubmitting ] = useState(false);
+    const [ isCollapsed, setIsCollapsed ] = useState(false);
     const [ notice, setNotice ] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
     const categoryRef = useRef<HTMLDivElement>(null);
@@ -261,12 +262,11 @@ export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
         setIsSubmitting(true);
 
         try {
-            const result = await matchService.submitSearch(values);
+            await matchService.submitSearch(values);
 
-            setNotice({
-                tone: "ok",
-                text: result.message,
-            });
+            // Успешный подбор сворачивает форму в сводку, результаты — ниже.
+            setNotice(null);
+            setIsCollapsed(true);
             onSearched?.();
         } catch (error) {
             setNotice({
@@ -276,6 +276,61 @@ export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
         } finally {
             setIsSubmitting(false);
         }
+    }
+
+    // После подбора форма схлопывается в строку-сводку с кнопкой «Изменить запрос».
+    if (isCollapsed) {
+        const platformLabel = PLATFORM_OPTIONS.find(
+            (option) => option.value === values.platform,
+        )?.label ?? "";
+
+        return (
+            <section className={styles.summary}>
+                <div className={styles.summaryMain}>
+                    <div className={styles.summaryHead}>
+                        <span className={styles.summaryLabel}>Вы закупаете</span>
+
+                        <span className={styles.summaryQuery}>{ values.query.trim() }</span>
+                    </div>
+
+                    <div className={styles.summaryMeta}>
+                        { values.category && (
+                            <span className={styles.summaryItem}>
+                                <span className={styles.summaryCategory}>
+                                    <span className={styles.summaryCode}>
+                                        { values.category.code }
+                                    </span>
+
+                                    { values.category.name }
+                                </span>
+                            </span>
+                        ) }
+
+                        { values.nmck !== "" && (
+                            <span className={styles.summaryItem}>
+                                НМЦК
+                                <span className={styles.summaryMono}>{ values.nmck }</span>
+                                ₽
+                            </span>
+                        ) }
+
+                        <span className={styles.summaryItem}>{ platformLabel }</span>
+
+                        { values.mspOnly && (
+                            <span className={styles.summaryItem}>только МСП</span>
+                        ) }
+                    </div>
+                </div>
+
+                <button
+                    className={styles.summaryEdit}
+                    type="button"
+                    onClick={() => setIsCollapsed(false)}
+                >
+                    Изменить запрос
+                </button>
+            </section>
+        );
     }
 
     return (
@@ -490,6 +545,16 @@ export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
                     <button className={styles.submit} type="submit" disabled={ isSubmitting }>
                         { isSubmitting ? "Подбираем…" : "Подобрать поставщиков" }
                     </button>
+
+                    { values.query.trim() !== "" && (
+                        <button
+                            className={styles.collapseBtn}
+                            type="button"
+                            onClick={() => setIsCollapsed(true)}
+                        >
+                            Свернуть
+                        </button>
+                    ) }
                 </div>
             </form>
         </section>

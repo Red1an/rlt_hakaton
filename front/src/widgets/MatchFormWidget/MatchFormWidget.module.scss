@@ -421,6 +421,7 @@
 
 .actions {
     display: flex;
+    align-items: center;
     gap: 12px;
     padding-top: 4px;
 }
@@ -446,5 +447,127 @@
     &:disabled {
         cursor: default;
         opacity: 0.7;
+    }
+}
+
+/* «Свернуть» — текстовая кнопка справа, сворачивает форму в сводку. */
+.collapseBtn {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink-3;
+    cursor: pointer;
+    transition: color 0.15s ease;
+
+    &:hover {
+        color: $ink-2;
+    }
+}
+
+/** Компактная сводка подбора вместо формы (по образцу макета). */
+.summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    max-width: 1360px;
+    padding: 14px 16px 14px 20px;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+    background: $surface;
+    box-shadow: $shadow;
+}
+
+.summaryMain {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 280px;
+}
+
+.summaryHead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.summaryLabel {
+    font-size: 12px;
+    color: $ink-3;
+    white-space: nowrap;
+}
+
+.summaryQuery {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: $lh-tight;
+    color: $ink;
+}
+
+.summaryMeta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 13px;
+    color: $ink-2;
+}
+
+/* Разделитель «·» между мета-элементами, кроме первого. */
+.summaryItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+
+    &:not(:first-child)::before {
+        content: "·";
+        margin-right: 8px;
+        color: $line-2;
+    }
+}
+
+.summaryCategory {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 6px;
+    background: $accent-soft;
+    color: $accent-ink;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.summaryCode {
+    font-family: $font-mono;
+    font-size: $fs-code;
+}
+
+.summaryMono {
+    font-family: $font-mono;
+}
+
+.summaryEdit {
+    flex-shrink: 0;
+    height: 38px;
+    padding: 0 16px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    font-weight: 500;
+    color: $ink;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: $surface-2;
     }
 }
