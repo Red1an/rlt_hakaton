@@ -9,6 +9,12 @@ export interface CategoryDto {
     name: string;
 }
 
+/** Параметры выборки справочника категорий. */
+export interface FetchCategoriesParams {
+    /** Поисковая строка по коду или названию. */
+    q?: string;
+}
+
 /** Тело запроса подбора категории по описанию. */
 export interface DetectCategoryRequestDto {
     query: string;
@@ -23,7 +29,6 @@ export interface SearchSuppliersRequestDto {
     nmck: number;
     platform: "ais" | "em";
     mspOnly: boolean;
-    customerInn: string | null;
 }
 
 /** Ответ поиска поставщиков. */

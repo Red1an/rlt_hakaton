@@ -8,6 +8,8 @@ export interface MockRequest {
     path: string;
     /** Тело запроса, разобранное из JSON. */
     body: unknown;
+    /** Query-параметры запроса. */
+    query: Record<string, string>;
 }
 
 /** Обработчик мок-маршрута. */

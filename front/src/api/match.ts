@@ -3,13 +3,20 @@ import type {
     CategoryDto,
     DetectCategoryRequestDto,
     DetectCategoryResponseDto,
+    FetchCategoriesParams,
     SearchSuppliersRequestDto,
     SearchSuppliersResponseDto,
 } from "./types";
 
-/** Справочник категорий ОКПД2 для выпадающего списка. */
-export async function fetchCategories(): Promise<CategoryDto[]> {
-    const { data } = await apiClient.get<CategoryDto[]>("/match/categories");
+/**
+ * Справочник категорий ОКПД2 для выпадающего списка.
+ * Пустой `params.q` возвращает полный справочник, иначе — отфильтрованный.
+ */
+export async function fetchCategories(params: FetchCategoriesParams = {}): Promise<CategoryDto[]> {
+    const term = params.q?.trim() ?? "";
+    const { data } = await apiClient.get<CategoryDto[]>("/match/categories", {
+        params: term.length > 0 ? { q: term } : undefined,
+    });
 
     return data;
 }

@@ -4,7 +4,6 @@ import {
 import type { FormEvent } from "react";
 
 import * as matchService from "@/service/matchService";
-import { ValidationError } from "@/service/matchService";
 import type {
     MatchFormValues, MatchPlatform, OkpdCategory,
 } from "@/service/matchService";
@@ -17,11 +16,13 @@ const INITIAL_VALUES: MatchFormValues = {
     nmck: "",
     platform: "em",
     mspOnly: false,
-    customerInn: "",
 };
 
 /** Пауза перед автоподбором, чтобы не дёргать api на каждое нажатие клавиши. */
 const DETECT_DEBOUNCE_MS = 400;
+
+/** Пауза перед поиском по справочнику категорий. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 /** Ниже этой длины описание не даёт оснований для подбора. */
 const MIN_DETECT_LENGTH = 3;
@@ -47,19 +48,23 @@ function formatNmck(raw: string): string {
 export default function MatchFormWidget() {
     const [ values, setValues ] = useState<MatchFormValues>( INITIAL_VALUES );
     const [ categories, setCategories ] = useState<OkpdCategory[]>([]);
+    const [ categoryTerm, setCategoryTerm ] = useState("");
     const [ isCategoryOpen, setIsCategoryOpen ] = useState(false);
+    const [ isCategoryLoading, setIsCategoryLoading ] = useState(false);
     const [ isAutoDetect, setIsAutoDetect ] = useState(true);
     const [ isDetecting, setIsDetecting ] = useState(false);
     const [ isSubmitting, setIsSubmitting ] = useState(false);
-    const [ innError, setInnError ] = useState<string | null>(null);
     const [ notice, setNotice ] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
     const categoryRef = useRef<HTMLDivElement>(null);
+    const categorySearchRef = useRef<HTMLInputElement>(null);
     /**
      * Счётчик запросов автоподбора: ответ приходит через ~400 мс, как и debounce,
      * поэтому без проверки id поздний ответ по старому тексту перетрёт свежий.
      */
     const detectRequestId = useRef(0);
+    /** Счётчик запросов поиска по справочнику — по той же причине. */
+    const searchRequestId = useRef(0);
 
     useEffect(() => {
         if (!isCategoryOpen) {
@@ -69,12 +74,14 @@ export default function MatchFormWidget() {
         function handlePointerDown(event: MouseEvent) {
             if (!categoryRef.current?.contains(event.target as Node)) {
                 setIsCategoryOpen(false);
+                setCategoryTerm("");
             }
         }
 
         function handleKeyDown(event: KeyboardEvent) {
             if (event.key === "Escape") {
                 setIsCategoryOpen(false);
+                setCategoryTerm("");
             }
         }
 
@@ -86,6 +93,49 @@ export default function MatchFormWidget() {
             document.removeEventListener("keydown", handleKeyDown);
         };
     }, [ isCategoryOpen ]);
+
+    // Поиск по справочнику с debounce, чтобы не дёргать api на каждое нажатие.
+    useEffect(() => {
+        if (!isCategoryOpen) {
+            return;
+        }
+
+        searchRequestId.current += 1;
+        const requestId = searchRequestId.current;
+
+        const timer = setTimeout(() => {
+            if (requestId !== searchRequestId.current) {
+                return;
+            }
+
+            setIsCategoryLoading(true);
+
+            void matchService.searchCategories(categoryTerm)
+                .then((found) => {
+                    if (requestId !== searchRequestId.current) {
+                        return;
+                    }
+
+                    setCategories(found);
+                })
+                .catch(() => {
+                    if (requestId !== searchRequestId.current) {
+                        return;
+                    }
+
+                    setCategories([]);
+                })
+                .finally(() => {
+                    if (requestId === searchRequestId.current) {
+                        setIsCategoryLoading(false);
+                    }
+                });
+        }, SEARCH_DEBOUNCE_MS);
+
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [ categoryTerm, isCategoryOpen ]);
 
     useEffect(() => {
         const query = values.query.trim();
@@ -175,20 +225,33 @@ export default function MatchFormWidget() {
         setNotice(null);
     }
 
+    /** Открывает список, ставит фокус в поиск и сразу показывает весь справочник. */
     function openCategoryList() {
-        setIsCategoryOpen((open) => !open);
+        const next = !isCategoryOpen;
 
-        if (categories.length === 0) {
-            void matchService.fetchCategories()
-                .then(setCategories)
-                .catch(() => setCategories([]));
+        setIsCategoryOpen(next);
+        setNotice(null);
+
+        if (!next) {
+            setCategoryTerm("");
+
+            return;
         }
+
+        setCategoryTerm("");
+        setIsCategoryLoading(true);
+
+        void matchService.fetchCategories()
+            .then(setCategories)
+            .catch(() => setCategories([]))
+            .finally(() => setIsCategoryLoading(false));
+
+        categorySearchRef.current?.focus();
     }
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        setInnError(null);
         setNotice(null);
         setIsSubmitting(true);
 
@@ -200,12 +263,6 @@ export default function MatchFormWidget() {
                 text: result.message,
             });
         } catch (error) {
-            if (error instanceof ValidationError) {
-                setInnError(error.message);
-
-                return;
-            }
-
             setNotice({
                 tone: "bad",
                 text: error instanceof Error ? error.message : "Не удалось выполнить подбор",
@@ -244,8 +301,6 @@ export default function MatchFormWidget() {
                                 aria-haspopup="listbox"
                                 onClick={openCategoryList}
                             >
-                                <span className={styles.categoryIcon}>✨</span>
-
                                 { isDetecting
                                     ? "Определяем категорию…"
                                     : values.category === null
@@ -268,35 +323,61 @@ export default function MatchFormWidget() {
                             </button>
 
                             { isCategoryOpen && (
-                                <div className={styles.categoryMenu} role="listbox">
-                                    { categories.length === 0
-                                        ? <span className={styles.categoryLoading}>Загрузка…</span>
-                                        : categories.map((item) => (
-                                            <button
-                                                key={ item.code }
-                                                className={ `${ styles.categoryOption } ${
-                                                    values.category?.code === item.code
-                                                        ? styles.categoryOptionSelected
-                                                        : ""
-                                                }` }
-                                                type="button"
-                                                role="option"
-                                                aria-selected={ values.category?.code === item.code }
-                                                onClick={() => {
-                                                    setValue("category", item);
-                                                    setIsCategoryOpen(false);
-                                                    // Ручной выбор снимает автоподбор, иначе
-                                                    // следующая правка описания его перетрёт.
-                                                    disableAutoDetect();
-                                                }}
-                                            >
-                                                <span className={styles.categoryCode}>
-                                                    { item.code }
-                                                </span>
+                                <div className={styles.categoryMenu}>
+                                    <input
+                                        ref={ categorySearchRef }
+                                        className={styles.categorySearch}
+                                        type="text"
+                                        value={ categoryTerm }
+                                        placeholder="Поиск по коду или названию"
+                                        onChange={(event) => setCategoryTerm(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === "Escape") {
+                                                setIsCategoryOpen(false);
+                                                setCategoryTerm("");
+                                            }
+                                        }}
+                                    />
 
-                                                <span>{ item.name }</span>
-                                            </button>
-                                        )) }
+                                    <div className={styles.categoryList} role="listbox">
+                                        { isCategoryLoading
+                                            ? <span className={styles.categoryLoading}>
+                                                Загрузка…
+                                            </span>
+                                            : categories.length === 0
+                                                ? <span className={styles.categoryLoading}>
+                                                    Ничего не найдено
+                                                </span>
+                                                : categories.map((item) => (
+                                                    <button
+                                                        key={ item.code }
+                                                        className={ `${ styles.categoryOption } ${
+                                                            values.category?.code === item.code
+                                                                ? styles.categoryOptionSelected
+                                                                : ""
+                                                        }` }
+                                                        type="button"
+                                                        role="option"
+                                                        aria-selected={ values.category?.code === item.code }
+                                                        onClick={() => {
+                                                            setValue("category", item);
+                                                            setIsCategoryOpen(false);
+                                                            setCategoryTerm("");
+                                                            // Ручной выбор снимает автоподбор, иначе
+                                                            // следующая правка описания его перетрёт.
+                                                            disableAutoDetect();
+                                                        }}
+                                                    >
+                                                        <span className={styles.categoryCode}>
+                                                            { item.code }
+                                                        </span>
+
+                                                        <span className={styles.categoryOptionName}>
+                                                            { item.name }
+                                                        </span>
+                                                    </button>
+                                                )) }
+                                    </div>
                                 </div>
                             ) }
                         </div>
@@ -371,25 +452,6 @@ export default function MatchFormWidget() {
                             )) }
                         </div>
                     </div>
-
-                    <label className={ `${ styles.field } ${ styles.fieldInn }` }>
-                        <span className={styles.label}>ИНН заказчика</span>
-
-                        <input
-                            className={ `${ styles.input } ${ innError ? styles.inputBad : "" }` }
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={ 10 }
-                            value={ values.customerInn }
-                            placeholder="Необязательно"
-                            onChange={(event) => {
-                                setInnError(null);
-                                setValue("customerInn", event.target.value.replace(/\D/g, ""));
-                            }}
-                        />
-
-                        { innError && <span className={styles.error}>{ innError }</span> }
-                    </label>
 
                     <div className={ `${ styles.field } ${ styles.fieldMsp }` }>
                         <span className={styles.label}>Только МСП</span>

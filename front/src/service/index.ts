@@ -1,7 +1,7 @@
 export {
-    ValidationError,
     detectCategory,
     fetchCategories,
+    searchCategories,
     submitSearch,
 } from "./matchService";
 

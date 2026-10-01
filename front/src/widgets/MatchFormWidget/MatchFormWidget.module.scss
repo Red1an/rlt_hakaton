@@ -40,13 +40,13 @@
     color: $ink-3;
 }
 
-/** Параметры подбора в одну строку: НМЦК · Площадка · ИНН · Только МСП. */
+/** Параметры подбора в одну строку: НМЦК · Площадка · Только МСП. */
 .paramsRow {
     display: flex;
     align-items: flex-start;
     gap: 16px;
 
-    /* НМЦК и ИНН забирают всю свободную ширину. */
+    /* НМЦК забирает всю свободную ширину. */
     & > * {
         flex: 1 1 0;
     }
@@ -72,11 +72,6 @@
             flex: 1 1 100%;
         }
     }
-}
-
-/* Поле ИНН: ошибка выносится из потока, чтобы ряд не прыгал по высоте. */
-.fieldInn {
-    position: relative;
 }
 
 .queryInput {
@@ -156,72 +151,100 @@
     transform: translateX(12px);
 }
 
+/* Поле категории тянется на всю строку, чтобы влезало полное название. */
 .category {
     position: relative;
-    max-width: 620px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
-/* Чип в стиле сайта: акцентная подложка, пунктирная рамка, акцентный текст. */
+/* Поле категории повторяет остальные инпуты: сплошная рамка, тот же радиус. */
 .categoryChip {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     width: 100%;
-    min-height: 34px;
-    padding: 6px 12px;
-    border: 1px dashed $accent-line;
-    border-radius: 999px;
-    background: $accent-soft;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
     font-family: $font-sans;
     font-size: $fs-base;
-    font-weight: 500;
-    color: $accent-ink;
+    color: $ink;
     cursor: pointer;
     text-align: left;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition: border-color 0.15s ease;
 
     &:hover {
-        border-color: $accent;
+        border-color: $ink-3;
     }
 
     &:focus-visible {
-        outline: 2px solid $accent;
-        outline-offset: 2px;
+        border-color: $accent;
+        outline: none;
+    }
+
+    &[aria-expanded="true"] {
+        border-color: $accent;
     }
 }
 
-.categoryIcon {
-    font-size: 12px;
-}
-
+/* Название показываем целиком: текст переносится, а не обрезается. */
 .categoryName {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .categoryCaret {
     margin-left: auto;
     padding-left: 8px;
     font-size: 10px;
-    color: $accent-ink;
-    opacity: 0.6;
+    color: $ink-3;
 }
 
+/* Меню: поиск сверху, прокручиваемый список снизу. */
 .categoryMenu {
     position: absolute;
     z-index: 10;
-    top: calc(100% + 6px);
+    top: calc(100% + 4px);
     left: 0;
     display: flex;
     flex-direction: column;
-    width: 420px;
-    max-height: 320px;
+    width: 100%;
     padding: 6px;
-    border: 1px solid $line;
+    border: 1px solid $line-2;
     border-radius: $radius-md;
     background: $surface;
     box-shadow: $shadow;
+}
+
+.categorySearch {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 34px;
+    margin-bottom: 6px;
+    padding: 0 10px;
+    border: 1px solid $line-2;
+    border-radius: $radius-sm;
+    background: $surface;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink;
+    outline: none;
+
+    &::placeholder {
+        color: $ink-3;
+    }
+
+    &:focus {
+        border-color: $accent;
+    }
+}
+
+.categoryList {
+    display: flex;
+    flex-direction: column;
+    max-height: 280px;
     overflow-y: auto;
 }
 
@@ -229,7 +252,8 @@
     display: flex;
     align-items: baseline;
     gap: 10px;
-    padding: 9px 10px;
+    width: 100%;
+    padding: 8px 10px;
     border: none;
     border-radius: $radius-sm;
     background: transparent;
@@ -238,16 +262,29 @@
     color: $ink;
     text-align: left;
     cursor: pointer;
+    transition: background 0.15s ease;
 
     &:hover {
-        background: $accent-soft;
+        background: $surface-2;
+    }
+
+    &:focus-visible {
+        background: $surface-2;
+        outline: none;
     }
 }
 
+/* Название варианта в списке переносится, чтобы длинные названия не резались. */
+.categoryOptionName {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .categoryCode {
+    flex: 0 0 64px;
     font-family: $font-mono;
     font-size: $fs-code;
-    color: $accent-ink;
+    color: $ink-3;
     white-space: nowrap;
 }
 
@@ -264,7 +301,11 @@
 }
 
 .categoryOptionSelected {
-    background: $accent-soft;
+    background: $surface-2;
+
+    &:hover {
+        background: $surface-3;
+    }
 }
 
 .input {
@@ -286,21 +327,6 @@
     &:focus {
         border-color: $accent;
     }
-}
-
-.inputBad {
-    border-color: $bad;
-}
-
-/* Ошибка под полем, вне потока — ряд параметров не меняет высоту. */
-.error {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 3px;
-    font-size: $fs-caption;
-    color: $bad;
-    white-space: nowrap;
 }
 
 /* Переключатель площадки: ширина ровно по кнопкам, без растяжения. */

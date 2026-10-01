@@ -54,6 +54,25 @@ function buildErrorResponse(
     };
 }
 
+/** Приводит query-параметры axios к строковым значениям. */
+function normalizeQuery(params: unknown): Record<string, string> {
+    if (params === null || typeof params !== "object") {
+        return {};
+    }
+
+    const result: Record<string, string> = {};
+
+    for (const [ key, value ] of Object.entries(params)) {
+        if (value === undefined || value === null) {
+            continue;
+        }
+
+        result[key] = String(value);
+    }
+
+    return result;
+}
+
 /**
  * Кастомный адаптер не проходит через settle() из axios, поэтому проверку
  * validateStatus выполняем сами: иначе ответы 4xx/5xx разрешались бы успешно.
@@ -101,6 +120,7 @@ export const mockAdapter: AxiosAdapter = async(config) => {
             method: (config.method ?? "get") as HttpMethod,
             path: config.url ?? "",
             body,
+            query: normalizeQuery(config.params),
         }, config);
     } catch (error) {
         response = buildErrorResponse(error, config);

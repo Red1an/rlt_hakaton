@@ -16,7 +16,6 @@ export interface MatchFormValues {
     nmck: string;
     platform: MatchPlatform;
     mspOnly: boolean;
-    customerInn: string;
 }
 
 /** Результат отправки формы, нормализованный для UI. */
@@ -26,20 +25,7 @@ export interface MatchSearchResult {
     message: string;
 }
 
-/** Ошибка валидации формы — показывается рядом с полем. */
-export class ValidationError extends Error {
-    readonly field: keyof MatchFormValues;
-
-    constructor(field: keyof MatchFormValues, message: string) {
-        super(message);
-        this.name = "ValidationError";
-        this.field = field;
-    }
-}
-
-const INN_LENGTH = 10;
-
-/** Кеш справочника, чтобы не дёргать api при каждом открытии списка. */
+/** Кеш полного справочника, чтобы не дёргать api при каждом открытии списка. */
 let categoriesCache: OkpdCategory[] | null = null;
 
 const PLATFORM_LABELS: Record<MatchPlatform, string> = {
@@ -55,7 +41,7 @@ function toCategory(dto: { code: string; name: string }): OkpdCategory {
     };
 }
 
-/** Справочник категорий для выпадающего списка «Сменить». */
+/** Полный справочник категорий для первого открытия списка. */
 export async function fetchCategories(): Promise<OkpdCategory[]> {
     if (categoriesCache !== null) {
         return categoriesCache;
@@ -66,6 +52,20 @@ export async function fetchCategories(): Promise<OkpdCategory[]> {
     categoriesCache = categories;
 
     return categories;
+}
+
+/**
+ * Поиск категории по коду или названию. Пустая строка отдаёт полный справочник
+ * из кеша без обращения к api.
+ */
+export async function searchCategories(term: string): Promise<OkpdCategory[]> {
+    const trimmed = term.trim();
+
+    if (trimmed.length === 0) {
+        return fetchCategories();
+    }
+
+    return (await matchApi.fetchCategories({ q: trimmed })).map(toCategory);
 }
 
 /** Автоподбор категории по описанию. Пустая категория — подбор не удался. */
@@ -79,23 +79,13 @@ export async function detectCategory(query: string): Promise<OkpdCategory | null
     return toCategory(detected);
 }
 
-/**
- * Отправка формы. Валидация ИНН — пусто либо строго 10 цифр;
- * остальные поля проверяет бэкенд, его сообщение пробрасывается как есть.
- */
+/** Отправка формы. Валидацию полей берёт на себя бэкенд, его сообщения пробрасываются. */
 export async function submitSearch(values: MatchFormValues): Promise<MatchSearchResult> {
-    const inn = values.customerInn.trim();
-
-    if (inn.length > 0 && !new RegExp(`^\\d{${ INN_LENGTH }}$`).test(inn)) {
-        throw new ValidationError("customerInn", "ИНН должен состоять из 10 цифр");
-    }
-
     const result = await matchApi.searchSuppliers({
         query: values.query.trim(),
         nmck: Number(values.nmck.replace(/\s/g, "")),
         platform: values.platform,
         mspOnly: values.mspOnly,
-        customerInn: inn.length > 0 ? inn : null,
     });
 
     return {

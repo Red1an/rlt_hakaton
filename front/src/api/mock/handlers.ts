@@ -10,7 +10,10 @@ import type {
     SearchSuppliersResponseDto,
 } from "../types";
 
-/** Справочник ОКПД2 — взят из макета «Подбор поставщиков (офлайн)». */
+/**
+ * Справочник ОКПД2 — взят из макета «Подбор поставщиков (офлайн)».
+ * Группы приведены к плоскому виду: клиенту удобнее искать по коду и названию.
+ */
 const CATEGORIES: CategoryDto[] = [
     {
         code: "17.12.14",
@@ -45,6 +48,18 @@ const CATEGORIES: CategoryDto[] = [
         name: "Хлеб и хлебобулочные изделия",
     },
 ];
+
+/** Поиск по коду и названию, без учёта регистра и лишних пробелов. */
+function matchesCategory(category: CategoryDto, term: string): boolean {
+    const needle = term.trim().toLowerCase();
+
+    if (needle.length === 0) {
+        return true;
+    }
+
+    return category.code.toLowerCase().includes(needle)
+        || category.name.toLowerCase().includes(needle);
+}
 
 const CATEGORY_NAMES = new Map(CATEGORIES.map((item) => [ item.code, item.name ]));
 
@@ -81,7 +96,12 @@ const KEYWORD_RULES: Array<{ code: string; words: string[] }> = [
 /** Ниже этой длины описание не даёт оснований для подбора. */
 const MIN_QUERY_LENGTH = 3;
 
-const handleCategories: MockHandler = () => CATEGORIES;
+/** Справочник категорий с фильтрацией по query-параметру `q`. */
+const handleCategories: MockHandler = (request: MockRequest) => {
+    const term = request.query.q ?? "";
+
+    return CATEGORIES.filter((category) => matchesCategory(category, term));
+};
 
 const handleDetectCategory: MockHandler = (request: MockRequest): DetectCategoryResponseDto => {
     const { query = "" } = (request.body ?? {}) as DetectCategoryRequestDto;
