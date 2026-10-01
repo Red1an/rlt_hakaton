@@ -21,6 +21,51 @@ export interface MatchFormValues {
     mspOnly: boolean;
 }
 
+/**
+ * Состояние формы, которым владеет страница: оно переживает переключение
+ * экранов и хранится в localStorage.
+ */
+export interface MatchFormState {
+    values: MatchFormValues;
+    /** Категория подбирается автоматически по описанию. */
+    isAutoDetect: boolean;
+    /** Форма свёрнута в строку-сводку. */
+    isCollapsed: boolean;
+}
+
+/** Лот закупки — это подбор с зафиксированными параметрами. */
+export interface ProcurementLot {
+    id: string;
+    /** Номер для шапки таблицы: Л-2026-0418. */
+    num: string;
+    /** Описание закупки, обрезанное для шапки. */
+    title: string;
+    /** НМЦК в виде, в котором его вводят в форме. */
+    nmck: string;
+    /** Снимок параметров: им форма восстанавливается кнопкой возврата. */
+    values: MatchFormValues;
+}
+
+/** Запись шорт-листа: поставщик, отобранный в конкретном лоте. */
+export interface ShortListEntry {
+    lotId: string;
+    supplierId: string;
+}
+
+export const INITIAL_MATCH_VALUES: MatchFormValues = {
+    query: "",
+    category: null,
+    nmck: "",
+    platform: "em",
+    mspOnly: false,
+};
+
+export const INITIAL_MATCH_STATE: MatchFormState = {
+    values: INITIAL_MATCH_VALUES,
+    isAutoDetect: true,
+    isCollapsed: false,
+};
+
 /** Результат отправки формы, нормализованный для UI. */
 export interface MatchSearchResult {
     requestId: string;
@@ -60,6 +105,8 @@ export interface SupplierVariant {
     why: Array<{ icon: string; text: string }>;
     /** Сайт без протокола. */
     site: string;
+    phone: string;
+    email: string;
     requisites: SupplierRequisite[];
     history: SupplierHistoryRow[];
 }
@@ -166,6 +213,8 @@ export async function fetchVariants(): Promise<SupplierVariant[]> {
             text,
         })),
         site: item.site,
+        phone: item.requisites.phone,
+        email: item.requisites.email,
         requisites: [
             {
                 label: "ИНН",

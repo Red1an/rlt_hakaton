@@ -1,40 +1,158 @@
 import { useState } from "react";
 
+import usePersistentState from "@/hooks/usePersistentState";
+import {
+    INITIAL_MATCH_STATE, lotIdFromValues, shortListCommentKey, upsertLot,
+} from "@/service";
+import type {
+    MatchFormState, MatchFormValues, ProcurementLot, ShortListEntry,
+} from "@/service";
 import MatchFormWidget from "@/widgets/MatchFormWidget/MatchFormWidget";
+import ShortListWidget from "@/widgets/ShortListWidget/ShortListWidget";
 import SidebarWidget from "@/widgets/SidebarWidget/SidebarWidget";
 import type { SidebarScreen } from "@/widgets/SidebarWidget/SidebarWidget";
 import VariantsWidget from "@/widgets/VariantsWidget/VariantsWidget";
 
 import styles from "./MainPage.module.scss";
 
+/** Комментарии к записям шорт-листа: «lotId:supplierId» → текст. */
+type Comments = Record<string, string>;
+
+function isArray(value: unknown): boolean {
+    return Array.isArray(value);
+}
+
+function isPlainObject(value: unknown): boolean {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Убирает комментарий записи, чтобы он не оставался после удаления поставщика. */
+function omitComment(comments: Comments, lotId: string, supplierId: string): Comments {
+    const key = shortListCommentKey(lotId, supplierId);
+    const {
+        [key]: _removed, ...rest
+    } = comments;
+
+    return rest;
+}
+
 export default function MainPage() {
     const [ screen, setScreen ] = useState<SidebarScreen>( "match" );
-    const [ hasSearched, setHasSearched ] = useState(false);
+    const [ match, setMatch ] = usePersistentState<MatchFormState>("match", INITIAL_MATCH_STATE);
+    const [ hasSearched, setHasSearched ] = usePersistentState("searched", false);
+    const [ lots, setLots ] = usePersistentState<ProcurementLot[]>("lots", [], isArray);
+    const [ activeLotId, setActiveLotId ] = usePersistentState("activeLot", "");
+    const [ entries, setEntries ] = usePersistentState<ShortListEntry[]>("shortlist", [], isArray);
+    const [ comments, setComments ] = usePersistentState<Comments>("comments", {}, isPlainObject);
 
     function handleNavigate(next: SidebarScreen) {
+        // Выдачу не прячем: кнопка возврата из шорт-листа должна вернуть к тому же подбору.
         setScreen(next);
-
-        // Уходя с «Подбора», прячем прошлую выдачу — при возврате снова форма.
-        if (next !== "match") {
-            setHasSearched(false);
-        }
     }
+
+    /** Переход на «Подбор» без параметров — на случай, пока лотов нет. */
+    function handleBackToMatch() {
+        setScreen("match");
+    }
+
+    /** Подбор заводит лот либо переиспользует существующий с теми же параметрами. */
+    function handleSearched(values: MatchFormValues) {
+        setLots((prev) => upsertLot(prev, values));
+        setActiveLotId(lotIdFromValues(values));
+        setHasSearched(true);
+    }
+
+    /**
+     * Возврат из шорт-листа в подбор с параметрами лота. Автоподбор гасим:
+     * категория лота уже выбрана, и подбор по описанию её перетёр бы.
+     */
+    function handleOpenLot(lot: ProcurementLot) {
+        setMatch((prev) => ({
+            ...prev,
+            values: lot.values,
+            isAutoDetect: false,
+            isCollapsed: false,
+        }));
+        setActiveLotId(lot.id);
+        setHasSearched(true);
+        setScreen("match");
+    }
+
+    function isInShortList(supplierId: string): boolean {
+        return entries.some((entry) => (
+            entry.lotId === activeLotId && entry.supplierId === supplierId
+        ));
+    }
+
+    function removeFromShortList(lotId: string, supplierId: string) {
+        setEntries((prev) => prev.filter((entry) => (
+            entry.lotId !== lotId || entry.supplierId !== supplierId
+        )));
+        setComments((prev) => omitComment(prev, lotId, supplierId));
+    }
+
+    function toggleShortList(supplierId: string) {
+        if (isInShortList(supplierId)) {
+            removeFromShortList(activeLotId, supplierId);
+
+            return;
+        }
+
+        setEntries((prev) => [
+            ...prev,
+            {
+                lotId: activeLotId,
+                supplierId,
+            },
+        ]);
+    }
+
+    function setComment(lotId: string, supplierId: string, text: string) {
+        setComments((prev) => ({
+            ...prev,
+            [shortListCommentKey(lotId, supplierId)]: text,
+        }));
+    }
+
+    /** Поставщики активного лота: их кнопки «В шорт-лист» уже нажаты. */
+    const activeShortListIds = entries
+        .filter((entry) => entry.lotId === activeLotId)
+        .map((entry) => entry.supplierId);
 
     return (
         <div className={styles.page}>
             <SidebarWidget
                 activeScreen={ screen }
                 onNavigate={ handleNavigate }
-                shortListCount={ 8 }
+                shortListCount={ entries.length }
             />
 
             <main className={styles.content}>
                 { screen === "match" ? (
                     <>
-                        <MatchFormWidget onSearched={() => setHasSearched(true)} />
+                        <MatchFormWidget
+                            state={ match }
+                            onChange={ setMatch }
+                            onSearched={ handleSearched }
+                        />
 
-                        { hasSearched && <VariantsWidget /> }
+                        { hasSearched && (
+                            <VariantsWidget
+                                shortListIds={ activeShortListIds }
+                                onToggleShortList={ toggleShortList }
+                            />
+                        ) }
                     </>
+                ) : screen === "short" ? (
+                    <ShortListWidget
+                        lots={ lots }
+                        entries={ entries }
+                        comments={ comments }
+                        onRemove={ removeFromShortList }
+                        onComment={ setComment }
+                        onOpenLot={ handleOpenLot }
+                        onBackToMatch={ handleBackToMatch }
+                    />
                 ) : screen }
             </main>
         </div>

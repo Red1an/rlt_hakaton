@@ -4,6 +4,7 @@ import {
 
 import * as matchService from "@/service/matchService";
 import { ROLE_LABELS } from "@/service/matchService";
+import { plural } from "@/service/format";
 import type {
     SupplierRole, SupplierVariant,
 } from "@/service/matchService";
@@ -29,22 +30,6 @@ const NOVELTY_OPTIONS: Array<{ value: NoveltyFilter; label: string }> = [
         label: "Все",
     },
 ];
-
-/** Русская форма слова по числу: 1 участие, 2 участия, 5 участий. */
-function plural(count: number, one: string, few: string, many: string): string {
-    const mod10 = count % 10;
-    const mod100 = count % 100;
-
-    if (mod10 === 1 && mod100 !== 11) {
-        return one;
-    }
-
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
-        return few;
-    }
-
-    return many;
-}
 
 interface VariantCardProps {
     variant: SupplierVariant;
@@ -195,6 +180,8 @@ function VariantDrawer({
                             { variant.flags.map((flag) => (
                                 <span key={ flag } className={styles.flag}>{ flag }</span>
                             )) }
+
+                            { variant.isNew && <span className={styles.flagNew}>Новый</span> }
                         </div>
 
                         <div className={styles.drawerMeta}>
@@ -319,13 +306,20 @@ function VariantDrawer({
     );
 }
 
-export default function VariantsWidget() {
+interface VariantsWidgetProps {
+    /** Список id поставщиков, которые уже в шорт-листе активного лота. */
+    shortListIds: string[];
+    onToggleShortList: (id: string) => void;
+}
+
+export default function VariantsWidget({
+    shortListIds, onToggleShortList,
+}: VariantsWidgetProps) {
     const [ variants, setVariants ] = useState<SupplierVariant[]>([]);
     const [ isLoading, setIsLoading ] = useState(true);
     const [ hasError, setHasError ] = useState(false);
     const [ roles, setRoles ] = useState<SupplierRole[]>([]);
     const [ novelty, setNovelty ] = useState<NoveltyFilter>("all");
-    const [ shortList, setShortList ] = useState<string[]>([]);
     const [ openCardId, setOpenCardId ] = useState<string | null>(null);
 
     useEffect(() => {
@@ -422,14 +416,6 @@ export default function VariantsWidget() {
     function resetFilters() {
         setRoles([]);
         setNovelty("all");
-    }
-
-    function toggleShortList(id: string) {
-        setShortList((prev) => (
-            prev.includes(id)
-                ? prev.filter((item) => item !== id)
-                : [ ...prev, id ]
-        ));
     }
 
     const openCard = variants.find((variant) => variant.id === openCardId) ?? null;
@@ -542,8 +528,8 @@ export default function VariantsWidget() {
                             <VariantCard
                                 key={ variant.id }
                                 variant={ variant }
-                                inShortList={ shortList.includes(variant.id) }
-                                onToggleShortList={() => toggleShortList(variant.id)}
+                                inShortList={ shortListIds.includes(variant.id) }
+                                onToggleShortList={() => onToggleShortList(variant.id)}
                                 onOpenCard={() => setOpenCardId(variant.id)}
                             />
                         )) }
@@ -554,8 +540,8 @@ export default function VariantsWidget() {
             { openCard && (
                 <VariantDrawer
                     variant={ openCard }
-                    inShortList={ shortList.includes(openCard.id) }
-                    onToggleShortList={() => toggleShortList(openCard.id)}
+                    inShortList={ shortListIds.includes(openCard.id) }
+                    onToggleShortList={() => onToggleShortList(openCard.id)}
                     onClose={() => setOpenCardId(null)}
                 />
             ) }

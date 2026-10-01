@@ -1,0 +1,345 @@
+.screen {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1360px;
+}
+
+.title {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.state {
+    margin: 0;
+    font-size: $fs-base;
+    color: $ink-3;
+}
+
+.hint {
+    margin: 0;
+    font-size: $fs-caption;
+    color: $ink-3;
+}
+
+.empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 22px 18px;
+    background: $surface;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+    font-size: $fs-base;
+    color: $ink-3;
+}
+
+.emptyTitle {
+    font-weight: 600;
+    color: $ink;
+}
+
+.backBtn {
+    height: 36px;
+    margin-top: 6px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: $radius-md;
+    background: $accent;
+    color: $on-accent;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: $accent-ink;
+    }
+}
+
+.lot {
+    background: $surface;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+    overflow: hidden;
+}
+
+.lotHead {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid $line;
+    flex-wrap: wrap;
+}
+
+.lotTitle {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.lotNum {
+    font-family: $font-mono;
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
+.lotNmck {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    font-size: $fs-base;
+    color: $ink-2;
+}
+
+.lotNmckValue {
+    font-family: $font-mono;
+}
+
+.lotSpacer {
+    flex: 1;
+}
+
+.lotCount {
+    font-size: $fs-base;
+    color: $ink-2;
+    white-space: nowrap;
+}
+
+.lotBack {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    color: $ink;
+    font-family: $font-sans;
+    font-size: $fs-caption;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: $surface-2;
+    }
+}
+
+.lotEmpty {
+    margin: 0;
+    padding: 22px 18px;
+    font-size: $fs-base;
+    color: $ink-3;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: $fs-base;
+}
+
+.th {
+    padding: 9px 8px;
+    border-bottom: 1px solid $line;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    color: $ink-3;
+    white-space: nowrap;
+
+    &:first-child {
+        padding-left: 18px;
+    }
+}
+
+.thComment {
+    width: 30%;
+}
+
+.thAction {
+    padding: 9px 18px;
+    border-bottom: 1px solid $line;
+    width: 44px;
+}
+
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.row {
+    border-bottom: 1px solid $line;
+
+    &:last-child {
+        border-bottom: 0;
+    }
+}
+
+.tdName {
+    padding: 8px 8px 8px 18px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.name {
+    margin-right: 6px;
+}
+
+.flag {
+    display: inline-block;
+    height: 20px;
+    margin-right: 4px;
+    padding: 0 7px;
+    border-radius: $radius-sm;
+    background: $surface-3;
+    color: $ink-2;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 20px;
+    vertical-align: middle;
+}
+
+.flagNew {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: $radius-sm;
+    background: $seg-new-bg;
+    color: $seg-new-fg;
+    font-size: $fs-badge;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.tdMono {
+    padding: 8px;
+    font-family: $font-mono;
+    font-size: $fs-code;
+    color: $ink;
+    white-space: nowrap;
+}
+
+.tdRole {
+    padding: 8px;
+    white-space: nowrap;
+}
+
+.roleDot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: $ink-3;
+}
+
+.roleDot_man {
+    background: $role-man;
+}
+
+.roleDot_dist {
+    background: $role-dist;
+}
+
+.roleDot_sup {
+    background: $role-sup;
+}
+
+.tdContacts {
+    padding: 8px;
+    font-size: $fs-code;
+    white-space: nowrap;
+}
+
+.phone {
+    display: block;
+    font-family: $font-mono;
+    font-size: $fs-code;
+}
+
+.email {
+    display: block;
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
+.tdComment {
+    padding: 6px 8px;
+}
+
+.commentInput {
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: $surface-2;
+    color: $ink;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+
+    &::placeholder {
+        color: $ink-3;
+    }
+
+    &:focus {
+        border-color: $accent-line;
+        background: $surface;
+    }
+}
+
+.tdAction {
+    padding: 8px 18px;
+    text-align: right;
+    vertical-align: middle;
+}
+
+.remove {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: $radius-sm;
+    background: transparent;
+    color: $ink-3;
+    font-family: $font-sans;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: $surface-3;
+    }
+}
+
+@media (max-width: 640px) {
+    .lotHead {
+        align-items: flex-start;
+    }
+
+    .lotSpacer {
+        display: none;
+    }
+
+    .table {
+        font-size: $fs-caption;
+    }
+
+    .email {
+        white-space: normal;
+        word-break: break-all;
+    }
+}

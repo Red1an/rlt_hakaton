@@ -1,22 +1,16 @@
 import {
-    useEffect, useRef, useState,
+    useCallback, useEffect, useRef, useState,
 } from "react";
-import type { FormEvent } from "react";
+import type {
+    Dispatch, FormEvent, SetStateAction,
+} from "react";
 
 import * as matchService from "@/service/matchService";
 import type {
-    MatchFormValues, MatchPlatform, OkpdCategory,
+    MatchFormState, MatchFormValues, MatchPlatform, OkpdCategory,
 } from "@/service/matchService";
 
 import styles from "./MatchFormWidget.module.scss";
-
-const INITIAL_VALUES: MatchFormValues = {
-    query: "",
-    category: null,
-    nmck: "",
-    platform: "em",
-    mspOnly: false,
-};
 
 /** Пауза перед автоподбором, чтобы не дёргать api на каждое нажатие клавиши. */
 const DETECT_DEBOUNCE_MS = 400;
@@ -46,21 +40,49 @@ function formatNmck(raw: string): string {
 }
 
 interface MatchFormWidgetProps {
-    /** Вызывается после успешного подбора — родитель показывает варианты. */
-    onSearched?: () => void;
+    /** Поля, режим автоподбора и свёрнутость хранит родитель — он же переживает экраны. */
+    state: MatchFormState;
+    onChange: Dispatch<SetStateAction<MatchFormState>>;
+    /** Вызывается после успешного подбора — родитель заводит лот и показывает варианты. */
+    onSearched?: (values: MatchFormValues) => void;
 }
 
-export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
-    const [ values, setValues ] = useState<MatchFormValues>( INITIAL_VALUES );
+export default function MatchFormWidget({
+    state, onChange, onSearched,
+}: MatchFormWidgetProps) {
+    const {
+        values, isAutoDetect, isCollapsed,
+    } = state;
     const [ categories, setCategories ] = useState<OkpdCategory[]>([]);
     const [ categoryTerm, setCategoryTerm ] = useState("");
     const [ isCategoryOpen, setIsCategoryOpen ] = useState(false);
     const [ isCategoryLoading, setIsCategoryLoading ] = useState(false);
-    const [ isAutoDetect, setIsAutoDetect ] = useState(true);
     const [ isDetecting, setIsDetecting ] = useState(false);
     const [ isSubmitting, setIsSubmitting ] = useState(false);
-    const [ isCollapsed, setIsCollapsed ] = useState(false);
     const [ notice, setNotice ] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+
+    // Обёртки стабильны по onChange, иначе эффект автоподбора
+    // перезапускался бы на каждом рендере.
+    const setValues = useCallback((update: (prev: MatchFormValues) => MatchFormValues) => {
+        onChange((prev) => ({
+            ...prev,
+            values: update(prev.values),
+        }));
+    }, [ onChange ]);
+
+    function setIsAutoDetect(value: boolean) {
+        onChange((prev) => ({
+            ...prev,
+            isAutoDetect: value,
+        }));
+    }
+
+    function setIsCollapsed(value: boolean) {
+        onChange((prev) => ({
+            ...prev,
+            isCollapsed: value,
+        }));
+    }
 
     const categoryRef = useRef<HTMLDivElement>(null);
     const categorySearchRef = useRef<HTMLInputElement>(null);
@@ -204,7 +226,7 @@ export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
         return () => {
             clearTimeout(timer);
         };
-    }, [ isAutoDetect, values.query ]);
+    }, [ isAutoDetect, setValues, values.query ]);
 
     function setValue<K extends keyof MatchFormValues>(key: K, value: MatchFormValues[K]) {
         setValues((prev) => ({
@@ -267,7 +289,7 @@ export default function MatchFormWidget({ onSearched }: MatchFormWidgetProps) {
             // Успешный подбор сворачивает форму в сводку, результаты — ниже.
             setNotice(null);
             setIsCollapsed(true);
-            onSearched?.();
+            onSearched?.(values);
         } catch (error) {
             setNotice({
                 tone: "bad",
