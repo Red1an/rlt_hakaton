@@ -12,6 +12,8 @@ export type {
     MatchPlatform,
     MatchSearchResult,
     OkpdCategory,
+    SupplierHistoryRow,
+    SupplierRequisite,
     SupplierRole,
     SupplierVariant,
 } from "./matchService";

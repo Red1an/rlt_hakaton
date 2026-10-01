@@ -28,6 +28,22 @@ export interface MatchSearchResult {
     message: string;
 }
 
+/** Поле реквизитов поставщика для карточки. */
+export interface SupplierRequisite {
+    label: string;
+    value: string;
+    /** Значение выводится моно-шрифтом (числа, коды). */
+    mono: boolean;
+}
+
+/** Строка истории участия в карточке поставщика (без даты). */
+export interface SupplierHistoryRow {
+    subject: string;
+    nmck: string;
+    customer: string;
+    won: boolean;
+}
+
 /** Поставщик-вариант в удобном для UI виде. */
 export interface SupplierVariant {
     id: string;
@@ -42,6 +58,10 @@ export interface SupplierVariant {
     wins: number;
     last: string;
     why: Array<{ icon: string; text: string }>;
+    /** Сайт без протокола. */
+    site: string;
+    requisites: SupplierRequisite[];
+    history: SupplierHistoryRow[];
 }
 
 /** Кеш полного справочника, чтобы не дёргать api при каждом открытии списка. */
@@ -121,6 +141,11 @@ export async function submitSearch(values: MatchFormValues): Promise<MatchSearch
     };
 }
 
+/** Группировка денег: 486000 → 486 000. */
+function formatMoney(value: number): string {
+    return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
 /** Список поставщиков-вариантов, нормализованный для UI. */
 export async function fetchVariants(): Promise<SupplierVariant[]> {
     const items = await matchApi.fetchVariants();
@@ -139,6 +164,50 @@ export async function fetchVariants(): Promise<SupplierVariant[]> {
         why: item.why.map(([ icon, text ]) => ({
             icon,
             text,
+        })),
+        site: item.site,
+        requisites: [
+            {
+                label: "ИНН",
+                value: item.inn,
+                mono: true,
+            },
+            {
+                label: "КПП",
+                value: item.requisites.kpp,
+                mono: true,
+            },
+            {
+                label: "ОГРН",
+                value: item.requisites.ogrn,
+                mono: true,
+            },
+            {
+                label: "ОКВЭД",
+                value: item.requisites.okved,
+                mono: true,
+            },
+            {
+                label: "Регион",
+                value: item.requisites.region,
+                mono: false,
+            },
+            {
+                label: "Телефон",
+                value: item.requisites.phone,
+                mono: true,
+            },
+            {
+                label: "Email",
+                value: item.requisites.email,
+                mono: true,
+            },
+        ],
+        history: item.history.map((row) => ({
+            subject: row.subject,
+            nmck: formatMoney(row.nmck),
+            customer: row.customer,
+            won: row.won,
         })),
     }));
 }

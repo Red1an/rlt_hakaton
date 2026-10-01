@@ -8,7 +8,9 @@ import type {
     DetectCategoryResponseDto,
     SearchSuppliersRequestDto,
     SearchSuppliersResponseDto,
+    SupplierRequisitesDto,
     SupplierVariantDto,
+    VariantHistoryRowDto,
     VariantsResponseDto,
 } from "../types";
 
@@ -154,7 +156,9 @@ function CATEGORY_NAME_OF(code: string): string {
  * Варианты поставщиков. Перенесены из макета «Подбор поставщиков (офлайн)»;
  * поля региона, тегов и сегмента в новом экране не используются.
  */
-const VARIANTS: SupplierVariantDto[] = [
+type SupplierVariantBase = Omit<SupplierVariantDto, "site" | "requisites" | "history">;
+
+const VARIANT_BASE: SupplierVariantBase[] = [
     {
         id: "szb",
         name: "ООО «СевЗапБумага»",
@@ -309,6 +313,156 @@ const VARIANTS: SupplierVariantDto[] = [
         ],
     },
 ];
+
+/** Сайт и реквизиты для карточки — по идентификатору поставщика. */
+const VARIANT_DETAILS: Record<string, { site: string; requisites: SupplierRequisitesDto }> = {
+    szb: {
+        site: "sevzapbum.ru",
+        requisites: {
+            kpp: "780101001",
+            ogrn: "1107847234567",
+            okved: "46.49",
+            region: "Санкт-Петербург",
+            phone: "+7 812 309-60-60",
+            email: "opt@sevzapbum.ru",
+        },
+    },
+    okspb: {
+        site: "office-komplekt.spb.ru",
+        requisites: {
+            kpp: "781401001",
+            ogrn: "1137847567890",
+            okved: "46.66",
+            region: "Санкт-Петербург",
+            phone: "+7 812 612-44-90",
+            email: "sale@office-komplekt.spb.ru",
+        },
+    },
+    nk: {
+        site: "nevskiy-kartridge.ru",
+        requisites: {
+            kpp: "780601001",
+            ogrn: "1097847011223",
+            okved: "17.12",
+            region: "Санкт-Петербург",
+            phone: "+7 812 777-12-34",
+            email: "sales@nevskiy-kartridge.ru",
+        },
+    },
+    pld: {
+        site: "printline-dist.ru",
+        requisites: {
+            kpp: "784201001",
+            ogrn: "1157847233445",
+            okved: "46.49",
+            region: "Санкт-Петербург",
+            phone: "+7 812 425-71-17",
+            email: "info@printline-dist.ru",
+        },
+    },
+    smirnov: {
+        site: "smirnov-office.ru",
+        requisites: {
+            kpp: "—",
+            ogrn: "317784700012345",
+            okved: "46.49",
+            region: "Санкт-Петербург",
+            phone: "+7 921 555-18-42",
+            email: "smirnov@smirnov-office.ru",
+        },
+    },
+    bk: {
+        site: "baltkanc.ru",
+        requisites: {
+            kpp: "781001001",
+            ogrn: "1147847567890",
+            okved: "46.49",
+            region: "Санкт-Петербург",
+            phone: "+7 812 309-60-61",
+            email: "opt@baltkanc.ru",
+        },
+    },
+    vbd: {
+        site: "vologda-paper.ru",
+        requisites: {
+            kpp: "352501001",
+            ogrn: "1113525001234",
+            okved: "46.49",
+            region: "Вологодская область",
+            phone: "+7 817 272-30-30",
+            email: "sale@vologda-paper.ru",
+        },
+    },
+    sevbum: {
+        site: "severnaya-bumaga.ru",
+        requisites: {
+            kpp: "780901001",
+            ogrn: "1207800123456",
+            okved: "17.12",
+            region: "Санкт-Петербург",
+            phone: "+7 812 244-88-10",
+            email: "info@severnaya-bumaga.ru",
+        },
+    },
+    kuznec: {
+        site: "kuznecova-ms.ru",
+        requisites: {
+            kpp: "—",
+            ogrn: "320780000012345",
+            okved: "46.49",
+            region: "Санкт-Петербург",
+            phone: "+7 921 300-77-15",
+            email: "kuznecova@kuznecova-ms.ru",
+        },
+    },
+};
+
+/** История участия одинакова для компаний из истории; у новых поставщиков пуста. */
+const PARTICIPATION_HISTORY: VariantHistoryRowDto[] = [
+    {
+        subject: "Бумага для офисной техники А4, 400 пачек",
+        nmck: 486000,
+        customer: "ГБОУ «Школа № 718»",
+        won: true,
+    },
+    {
+        subject: "Бумага А4 и А3 для нужд поликлиники",
+        nmck: 312500,
+        customer: "СПб ГБУЗ «Поликлиника № 61»",
+        won: false,
+    },
+    {
+        subject: "Бумага офисная, класс B",
+        nmck: 1180000,
+        customer: "ГКУ «Жилищное агентство района»",
+        won: true,
+    },
+    {
+        subject: "Канцелярские товары и бумага",
+        nmck: 264000,
+        customer: "ГБДОУ «Детский сад № 45»",
+        won: false,
+    },
+    {
+        subject: "Бумага для печати А4, 1 200 пачек",
+        nmck: 1940000,
+        customer: "СПб ГКУ «Центр информационных технологий»",
+        won: true,
+    },
+    {
+        subject: "Бумага для офисной техники",
+        nmck: 158700,
+        customer: "ГБОУ «Лицей № 590»",
+        won: false,
+    },
+];
+
+const VARIANTS: SupplierVariantDto[] = VARIANT_BASE.map((item) => ({
+    ...item,
+    site: VARIANT_DETAILS[item.id].site,
+    requisites: VARIANT_DETAILS[item.id].requisites,
+    history: item.novelty === "new" ? [] : PARTICIPATION_HISTORY,
+}));
 
 const handleVariants: MockHandler = (): VariantsResponseDto => ({ items: VARIANTS });
 

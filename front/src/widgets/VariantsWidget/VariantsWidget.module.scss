@@ -406,6 +406,7 @@
 
 .shortList {
     height: 36px;
+    padding: 0 14px;
     border: 1px solid $accent;
     border-radius: $radius-md;
     background: $accent;
@@ -442,5 +443,244 @@
 @media (width <= 900px) {
     .layout {
         grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* ── Карточка поставщика (выезжающая панель) ─────────────────────────────── */
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: $overlay;
+}
+
+.drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    width: min(800px, 94vw);
+    overflow: auto;
+    background: $bg;
+    box-shadow: $shadow;
+}
+
+.drawerHead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid $line;
+    background: $surface;
+}
+
+.drawerIdentity {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.drawerNameRow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.drawerName {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: $lh-tight;
+    letter-spacing: -0.01em;
+}
+
+.drawerMeta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: $fs-nav-secondary;
+    color: $ink-2;
+}
+
+.drawerSite {
+    white-space: nowrap;
+}
+
+.drawerActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.close {
+    width: 36px;
+    height: 36px;
+    border: 1px solid $line;
+    border-radius: $radius-md;
+    background: $surface;
+    color: $ink-2;
+    font-size: 18px;
+    cursor: pointer;
+
+    &:hover {
+        background: $surface-2;
+    }
+}
+
+.drawerBody {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 22px 28px 48px;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px 20px;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+    background: $surface;
+}
+
+.panelTitle {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+/* Реквизиты: две колонки «метка — значение». */
+.reqGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 28px;
+}
+
+.reqRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    font-size: 13px;
+}
+
+.reqLabel {
+    flex-shrink: 0;
+    width: 84px;
+    color: $ink-3;
+}
+
+.reqValue {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.reqMono {
+    font-family: $font-mono;
+}
+
+.histEmpty {
+    margin: 0;
+    color: $ink-3;
+    font-size: 13px;
+}
+
+/* История участия: без даты — предмет, НМЦК, заказчик, результат. */
+.histTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.histTh {
+    padding: 8px 12px;
+    border-bottom: 1px solid $line;
+    color: $ink-3;
+    font-size: $fs-code;
+    font-weight: 500;
+    text-align: left;
+
+    &:first-child {
+        padding-left: 0;
+    }
+
+    &:last-child {
+        padding-right: 0;
+    }
+}
+
+.histThNum {
+    text-align: right;
+}
+
+.histRow {
+    border-bottom: 1px solid $line;
+}
+
+.histTd {
+    padding: 9px 12px;
+    vertical-align: middle;
+
+    &:first-child {
+        padding-left: 0;
+    }
+
+    &:last-child {
+        padding-right: 0;
+    }
+}
+
+.histNum {
+    text-align: right;
+    font-family: $font-mono;
+    font-size: 12.5px;
+    white-space: nowrap;
+}
+
+.histCustomer {
+    color: $ink-2;
+}
+
+.histResult {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: $fs-code;
+    white-space: nowrap;
+}
+
+.histWin {
+    background: $accent-soft;
+    color: $accent-ink;
+}
+
+.histLose {
+    background: $surface-3;
+    color: $ink-2;
+}
+
+@media (width <= 640px) {
+    .reqGrid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .drawerHead,
+    .drawerBody {
+        padding-right: 20px;
+        padding-left: 20px;
     }
 }

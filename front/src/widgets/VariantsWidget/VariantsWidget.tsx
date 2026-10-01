@@ -50,10 +50,11 @@ interface VariantCardProps {
     variant: SupplierVariant;
     inShortList: boolean;
     onToggleShortList: () => void;
+    onOpenCard: () => void;
 }
 
 function VariantCard({
-    variant, inShortList, onToggleShortList,
+    variant, inShortList, onToggleShortList, onOpenCard,
 }: VariantCardProps) {
     const {
         part, wins,
@@ -63,7 +64,7 @@ function VariantCard({
         <article className={styles.card}>
             <div className={styles.cardMain}>
                 <div className={styles.cardHead}>
-                    <button className={styles.cardName} type="button">
+                    <button className={styles.cardName} type="button" onClick={ onOpenCard }>
                         { variant.name }
                     </button>
 
@@ -143,9 +144,178 @@ function VariantCard({
                     { inShortList ? "✓ В шорт-листе" : "В шорт-лист" }
                 </button>
 
-                <button className={styles.openCard} type="button">Карточка</button>
+                <button className={styles.openCard} type="button" onClick={ onOpenCard }>
+                    Карточка
+                </button>
             </div>
         </article>
+    );
+}
+
+interface VariantDrawerProps {
+    variant: SupplierVariant;
+    inShortList: boolean;
+    onToggleShortList: () => void;
+    onClose: () => void;
+}
+
+/** Выезжающая карточка: шапка, реквизиты и история участия без даты. */
+function VariantDrawer({
+    variant, inShortList, onToggleShortList, onClose,
+}: VariantDrawerProps) {
+    useEffect(() => {
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        }
+
+        document.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [ onClose ]);
+
+    return (
+        <>
+            <div className={styles.overlay} onClick={ onClose } />
+
+            <div
+                className={styles.drawer}
+                role="dialog"
+                aria-modal="true"
+                aria-label={ variant.name }
+            >
+                <div className={styles.drawerHead}>
+                    <div className={styles.drawerIdentity}>
+                        <div className={styles.drawerNameRow}>
+                            <span className={styles.drawerName}>{ variant.name }</span>
+
+                            { variant.flags.map((flag) => (
+                                <span key={ flag } className={styles.flag}>{ flag }</span>
+                            )) }
+                        </div>
+
+                        <div className={styles.drawerMeta}>
+                            <span className={styles.roleBadge}>
+                                <span
+                                    className={ `${ styles.roleDot } ${
+                                        styles[`roleDot_${ variant.role }`]
+                                    }` }
+                                />
+                                { ROLE_LABELS[variant.role] }
+                            </span>
+
+                            <a
+                                className={styles.drawerSite}
+                                href={ `https://${ variant.site }` }
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                { variant.site }
+                            </a>
+                        </div>
+                    </div>
+
+                    <div className={styles.drawerActions}>
+                        <button
+                            className={ `${ styles.shortList } ${
+                                inShortList ? styles.shortListOn : ""
+                            }` }
+                            type="button"
+                            onClick={ onToggleShortList }
+                        >
+                            { inShortList ? "✓ В шорт-листе" : "В шорт-лист" }
+                        </button>
+
+                        <button
+                            className={styles.close}
+                            type="button"
+                            aria-label="Закрыть"
+                            onClick={ onClose }
+                        >
+                            ×
+                        </button>
+                    </div>
+                </div>
+
+                <div className={styles.drawerBody}>
+                    <div className={styles.panel}>
+                        <span className={styles.panelTitle}>Реквизиты</span>
+
+                        <div className={styles.reqGrid}>
+                            { variant.requisites.map((field) => (
+                                <div key={ field.label } className={styles.reqRow}>
+                                    <span className={styles.reqLabel}>{ field.label }</span>
+
+                                    <span
+                                        className={ `${ styles.reqValue } ${
+                                            field.mono ? styles.reqMono : ""
+                                        }` }
+                                    >
+                                        { field.value }
+                                    </span>
+                                </div>
+                            )) }
+                        </div>
+                    </div>
+
+                    <div className={styles.panel}>
+                        <span className={styles.panelTitle}>История участия</span>
+
+                        { variant.history.length === 0 ? (
+                            <p className={styles.histEmpty}>Нет записей в истории закупок.</p>
+                        ) : (
+                            <table className={styles.histTable}>
+                                <thead>
+                                    <tr>
+                                        <th className={styles.histTh}>Предмет лота</th>
+
+                                        <th className={ `${ styles.histTh } ${ styles.histThNum }` }>
+                                            НМЦК, ₽
+                                        </th>
+
+                                        <th className={styles.histTh}>Заказчик</th>
+
+                                        <th className={styles.histTh}>Результат</th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    { variant.history.map((row) => (
+                                        <tr
+                                            key={ `${ row.subject }-${ row.customer }` }
+                                            className={styles.histRow}
+                                        >
+                                            <td className={styles.histTd}>{ row.subject }</td>
+
+                                            <td className={ `${ styles.histTd } ${ styles.histNum }` }>
+                                                { row.nmck }
+                                            </td>
+
+                                            <td className={ `${ styles.histTd } ${ styles.histCustomer }` }>
+                                                { row.customer }
+                                            </td>
+
+                                            <td className={styles.histTd}>
+                                                <span
+                                                    className={ `${ styles.histResult } ${
+                                                        row.won ? styles.histWin : styles.histLose
+                                                    }` }
+                                                >
+                                                    { row.won ? "Победа" : "Участие" }
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    )) }
+                                </tbody>
+                            </table>
+                        ) }
+                    </div>
+                </div>
+            </div>
+        </>
     );
 }
 
@@ -156,6 +326,7 @@ export default function VariantsWidget() {
     const [ roles, setRoles ] = useState<SupplierRole[]>([]);
     const [ novelty, setNovelty ] = useState<NoveltyFilter>("all");
     const [ shortList, setShortList ] = useState<string[]>([]);
+    const [ openCardId, setOpenCardId ] = useState<string | null>(null);
 
     useEffect(() => {
         let isAlive = true;
@@ -260,6 +431,8 @@ export default function VariantsWidget() {
                 : [ ...prev, id ]
         ));
     }
+
+    const openCard = variants.find((variant) => variant.id === openCardId) ?? null;
 
     return (
         <div className={styles.layout}>
@@ -371,11 +544,21 @@ export default function VariantsWidget() {
                                 variant={ variant }
                                 inShortList={ shortList.includes(variant.id) }
                                 onToggleShortList={() => toggleShortList(variant.id)}
+                                onOpenCard={() => setOpenCardId(variant.id)}
                             />
                         )) }
                     </div>
                 ) }
             </div>
+
+            { openCard && (
+                <VariantDrawer
+                    variant={ openCard }
+                    inShortList={ shortList.includes(openCard.id) }
+                    onToggleShortList={() => toggleShortList(openCard.id)}
+                    onClose={() => setOpenCardId(null)}
+                />
+            ) }
         </div>
     );
 }

@@ -43,6 +43,27 @@ export type SupplierRole = "man" | "dist" | "sup";
 /** Признак наличия истории закупок у поставщика. */
 export type VariantNovelty = "new" | "existing";
 
+/** Реквизиты поставщика для карточки. */
+export interface SupplierRequisitesDto {
+    kpp: string;
+    ogrn: string;
+    okved: string;
+    region: string;
+    phone: string;
+    email: string;
+}
+
+/** Строка истории участия поставщика (без даты). */
+export interface VariantHistoryRowDto {
+    /** Предмет лота. */
+    subject: string;
+    /** НМЦК в рублях. */
+    nmck: number;
+    customer: string;
+    /** Победа или просто участие. */
+    won: boolean;
+}
+
 /** Поставщик в списке вариантов. */
 export interface SupplierVariantDto {
     id: string;
@@ -62,6 +83,11 @@ export interface SupplierVariantDto {
     last: string;
     /** Аргументы «почему рекомендуем»: [иконка, текст]. */
     why: Array<[string, string]>;
+    /** Адрес сайта без протокола. */
+    site: string;
+    requisites: SupplierRequisitesDto;
+    /** История участия без даты; у новых поставщиков пуста. */
+    history: VariantHistoryRowDto[];
 }
 
 /** Ответ справочника вариантов. */
