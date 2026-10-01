@@ -18,3 +18,9 @@ async def get_suppliers():
     return {
         "status": 200
     }
+
+@app.get("/parse")
+async def parse():
+    return {
+        "status": 200
+    }

@@ -2,3 +2,4 @@ sqlalchemy
 python-dotenv
 greenlet
 fastapi
+fastapi[standard]

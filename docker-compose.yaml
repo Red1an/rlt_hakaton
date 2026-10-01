@@ -17,6 +17,15 @@ services:
     ports:
       - ${DB_PORT}:5432
 
+  api:
+    depends_on:
+      - db
+    build:
+      context: .
+      dockerfile: ./api/Dockerfile
+    container_name: rlt-api
+    ports:
+      - 80:80
   adminer:
     image: adminer
     container_name: rlt-adminer
