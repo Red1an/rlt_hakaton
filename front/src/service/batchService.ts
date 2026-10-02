@@ -13,10 +13,14 @@ export const BATCH_EXPORT_TOP = 10;
 
 export const fetchBatches = batchApi.fetchBatches;
 export const recomputeBatch = batchApi.recomputeBatch;
+export const computeLot = batchApi.computeLot;
 export const fetchBatchStatus = batchApi.fetchBatchStatus;
 export const deleteBatch = batchApi.deleteBatch;
 
-export async function uploadBatch(files: File[], name: string): Promise<{ name: string; job: BatchJob }> {
+export async function uploadBatch(
+    files: File[],
+    name: string,
+): Promise<{ name: string; lots?: number; job: BatchJob }> {
     return batchApi.uploadBatch(files, name.trim());
 }
 

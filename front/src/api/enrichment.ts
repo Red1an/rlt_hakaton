@@ -9,7 +9,7 @@ export async function fetchEnrichment(): Promise<EnrichmentStateDto> {
 
 export async function startEnrichment(okpd: string | null, limit: number): Promise<EnrichmentStateDto> {
     const { data } = await apiClient.post<EnrichmentStateDto>("/match/enrichment", {
-        okpd,
+        okpd: okpd ?? "",
         limit,
     });
 

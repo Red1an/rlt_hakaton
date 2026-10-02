@@ -13,6 +13,9 @@ FEATURES = [
     "comp_wins",
     "comp_win_share",
     "direct_cnt",
+    "direct_share",
+    "spec_share",
+    "typicality",
     "days_since_last",
     "platform_share",
     "price_fit",
@@ -49,6 +52,7 @@ def history_stats(history: pd.DataFrame) -> dict[str, pd.DataFrame]:
         comp_part=("competitive", "sum"),
         comp_wins=("comp_win", "sum"),
         direct_cnt=("direct", "sum"),
+        typicality=("typicality", "mean"),
         last_date=("publish_date", "max"),
         eshop_bids=("is_eshop", "sum"),
         typical_price=("start_price", "median"),
@@ -100,14 +104,19 @@ def build_examples(
     until: str,
     max_lots: int | None = None,
     seed: int = 0,
+    typicality: pd.Series | None = None,
+    competitive_only: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     cutoff_date, until_date = pd.Timestamp(cutoff), pd.Timestamp(until)
     lot_bids = bids.merge(lots, on="lot_id")
+    lot_bids["typicality"] = lot_bids["lot_id"].map(typicality) if typicality is not None else np.nan
     history = lot_bids[lot_bids["publish_date"] <= cutoff_date]
     stats = history_stats(history)
 
     target_lots = lots[(lots["publish_date"] > cutoff_date) & (lots["publish_date"] <= until_date)]
-    target_lots = target_lots[target_lots["lot_id"].isin(bids["lot_id"])]
+    participants = bids.groupby("lot_id").size()
+    minimum = 2 if competitive_only else 1
+    target_lots = target_lots[target_lots["lot_id"].map(participants).fillna(0) >= minimum]
     if max_lots and len(target_lots) > max_lots:
         target_lots = target_lots.sample(max_lots, random_state=seed)
 
@@ -123,6 +132,8 @@ def build_examples(
     eshop_share = rows["eshop_bids"] / rows["part"]
     rows["win_share"] = rows["wins"] / rows["part"]
     rows["comp_win_share"] = rows["comp_wins"] / rows["comp_part"].replace(0, np.nan)
+    rows["direct_share"] = rows["direct_cnt"] / rows["part"]
+    rows["spec_share"] = rows["part"] / rows["total_bids"]
     rows["days_since_last"] = (rows["publish_date"] - rows["last_date"]).dt.days
     rows["platform_share"] = np.where(rows["is_eshop"], eshop_share, 1 - eshop_share)
     rows["price_fit"] = np.clip(1 - np.abs(np.log10(rows["start_price"].clip(lower=1) / rows["typical_price"].clip(lower=1))) / 2, 0, 1)

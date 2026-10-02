@@ -8,6 +8,8 @@ import httpx
 from .utils import CACHE_DIR
 
 DADATA_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party"
+SUGGEST_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party"
+SUGGEST_COUNT = 20
 DAILY_LIMIT = int(os.getenv("DADATA_DAILY_LIMIT", "9500"))
 CACHE_TTL = timedelta(days=7)
 REQUEST_PAUSE = 0.05
@@ -107,6 +109,34 @@ def fetch_party(client: httpx.Client, inn: str) -> dict | None:
     )
     time.sleep(REQUEST_PAUSE)
     return data
+
+
+def suggest_parties(client: httpx.Client, query: str, okveds: list[str], regions: list[str]) -> list[dict]:
+    if used_today() >= DAILY_LIMIT:
+        raise DadataQuotaExceeded(f"дневной лимит DaData исчерпан ({DAILY_LIMIT} запросов)")
+    try:
+        response = client.post(
+            SUGGEST_URL,
+            json={
+                "query": query,
+                "count": SUGGEST_COUNT,
+                "status": ["ACTIVE"],
+                "okved": okveds,
+                "branch_type": ["MAIN"],
+                "locations": [{"kladr_id": region} for region in regions],
+            },
+            headers={"Authorization": f"Token {api_key()}", "Accept": "application/json"},
+        )
+        count_request()
+        if response.status_code in (401, 403):
+            raise DadataUnavailable("ключ DaData не принят")
+        if response.status_code == 429:
+            raise DadataQuotaExceeded("DaData ограничила частоту запросов")
+        response.raise_for_status()
+    except httpx.HTTPError as error:
+        raise DadataUnavailable(str(error)) from error
+    time.sleep(REQUEST_PAUSE)
+    return [item["data"] for item in response.json().get("suggestions", []) if item.get("data")]
 
 
 def from_millis(value: int | None) -> date | None:

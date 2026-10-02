@@ -4,6 +4,7 @@ import {
 import type {
     BatchDto,
     BatchJobResponseDto,
+    BatchLotDto,
     BatchLotsResponseDto,
     SupplierVariantDto,
     VariantsResponseDto,
@@ -31,10 +32,19 @@ export async function uploadBatch(files: File[], name: string): Promise<BatchJob
     return data;
 }
 
-export async function recomputeBatch(name: string): Promise<BatchJobResponseDto> {
+export async function recomputeBatch(name: string, onlyMissing: boolean): Promise<BatchJobResponseDto> {
     const { data } = await apiClient.post<BatchJobResponseDto>("/match/batches/recompute", null, {
-        params: { name },
+        params: {
+            name,
+            onlyMissing,
+        },
     });
+
+    return data;
+}
+
+export async function computeLot(lotId: number): Promise<BatchLotDto> {
+    const { data } = await apiClient.post<BatchLotDto>(`/match/lots/${ lotId }/compute`);
 
     return data;
 }

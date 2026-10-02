@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from .batches import (
     BatchError,
     batch_lots,
+    compute_single,
     delete_batch,
     export_csv,
     job_state,
@@ -17,11 +18,11 @@ from .batches import (
     start_compute,
     upload_batch,
 )
-from .categories import category_name, list_categories
+from .categories import category_name, is_selectable, list_categories
 from .enrichment import DEFAULT_LIMIT, enrichment_state, start_enrichment
 from .db import connect
 from .jobs import enrich_names
-from .recommend import fill_names, recommend
+from .recommend import fill_names, needs_check, recommend
 
 router = APIRouter(prefix="/match")
 
@@ -30,7 +31,7 @@ _last_request_id: str | None = None
 
 
 class EnrichmentRequest(BaseModel):
-    okpd: str | None = None
+    okpd: str = ""
     limit: int = DEFAULT_LIMIT
 
 
@@ -54,6 +55,8 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
     okpd = request.category.strip()
     if not okpd:
         raise HTTPException(422, "Выберите категорию ОКПД2")
+    if not is_selectable(okpd):
+        raise HTTPException(422, "Категория слишком общая: выберите группу, например 32.50 или 17.12")
     if request.nmck <= 0:
         raise HTTPException(422, "Укажите НМЦК")
 
@@ -74,7 +77,7 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
     _results[request_id] = items
     _last_request_id = request_id
 
-    missing_names = [item["inn"] for item in items if item["name"].startswith("Компания ИНН")]
+    missing_names = [item["inn"] for item in items if needs_check(item)]
     if missing_names:
         background_tasks.add_task(enrich_names, missing_names)
 
@@ -102,8 +105,16 @@ def create_batch(files: list[UploadFile] = File(...), name: str = Form("")) -> d
 
 
 @router.post("/batches/recompute")
-def recompute_batch(name: str) -> dict:
-    return {"name": name, "job": start_compute(name)}
+def recompute_batch(name: str, onlyMissing: bool = False) -> dict:
+    return {"name": name, "job": start_compute(name, onlyMissing)}
+
+
+@router.post("/lots/{lot_id}/compute")
+def compute_lot_now(lot_id: int) -> dict:
+    lot = compute_single(lot_id)
+    if lot is None:
+        raise HTTPException(404, "Лот не найден")
+    return lot
 
 
 @router.get("/batches/status")
@@ -145,8 +156,12 @@ def variants_of_lot(lot_id: int) -> dict:
 
 @router.post("/enrichment")
 def run_enrichment(request: EnrichmentRequest) -> dict:
-    okpd = (request.okpd or "").strip() or None
-    return start_enrichment(okpd, request.limit)
+    okpd = request.okpd.strip()
+    if not okpd:
+        return start_enrichment(None, request.limit)
+    if not is_selectable(okpd):
+        raise HTTPException(422, "Выберите конкретную категорию ОКПД2 вида XX.XX")
+    return start_enrichment(okpd[:5], request.limit)
 
 
 @router.get("/enrichment")

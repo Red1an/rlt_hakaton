@@ -74,8 +74,11 @@ export interface SupplierVariantDto {
     flags: string[];
     novelty: VariantNovelty;
     role: SupplierRole;
-    /** Релевантность 0–100. */
+    /** При scoreKind = suitability — подходимость 0–100 по общей шкале, иначе относительная оценка в выдаче. */
     score: number;
+    scoreKind?: ScoreKind;
+    /** Во сколько раз чаще среднего кандидата такие компании подают заявки. */
+    lift?: number | null;
     /** Участий в похожих лотах. */
     part: number;
     /** Побед в похожих лотах. */
@@ -90,6 +93,12 @@ export interface SupplierVariantDto {
     /** История участия без даты; у новых поставщиков пуста. */
     history: VariantHistoryRowDto[];
     roleReason?: string | null;
+    verified?: SupplierVerificationDto | null;
+}
+
+export interface SupplierVerificationDto {
+    by: "dadata" | "egrul";
+    at: string | null;
 }
 
 /** Ответ справочника вариантов. */
@@ -116,10 +125,13 @@ export interface BatchDto {
     job: BatchJobDto;
 }
 
+export type ScoreKind = "suitability" | "probability" | "relative" | "new";
+
 export interface BatchLotTopDto {
     inn: string;
     name: string;
     score: number;
+    scoreKind?: ScoreKind;
     novelty: VariantNovelty;
 }
 
@@ -144,6 +156,7 @@ export interface BatchLotsResponseDto {
 }
 
 export interface BatchJobResponseDto {
+    lots?: number;
     name: string;
     job: BatchJobDto;
 }
@@ -194,23 +207,23 @@ export interface OkpdResponseDto {
 export interface EnrichmentResultDto {
     inn: string;
     name: string | null;
-    status: string | null;
-    role?: "manufacturer" | "distributor" | "supplier" | null;
-    roleReason?: string | null;
-    okved?: string | null;
-    regionCode?: string | null;
-    regDate?: string | null;
-    message?: string;
+    role: "manufacturer" | "distributor" | "supplier" | null;
+    roleReason: string | null;
+    okved: string | null;
+    regionCode: string | null;
+    regDate: string | null;
+    address: string | null;
 }
 
 export interface EnrichmentJobDto {
     status: "idle" | "running" | "done" | "stopped" | "error";
     okpd?: string | null;
-    total?: number;
-    done?: number;
-    closed?: number;
-    notFound?: number;
-    errors?: number;
+    limit?: number;
+    requests?: number;
+    found?: number;
+    categories?: number;
+    categoriesDone?: number;
+    current?: string;
     message?: string;
     results?: EnrichmentResultDto[];
 }
@@ -218,5 +231,6 @@ export interface EnrichmentJobDto {
 export interface EnrichmentStateDto {
     job: EnrichmentJobDto;
     maxLimit: number;
-    suppliers: { total: number; enriched: number; closed: number; warning: number };
+    perCategory: number;
+    suppliers: { total: number; found: number; web: number };
 }

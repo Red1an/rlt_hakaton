@@ -5,6 +5,7 @@ import pandas as pd
 
 from ml.data import CACHE_DIR, load_all
 from ml.features import FEATURES, build_examples
+from ml.text import lot_typicality
 from ml.train import TEST_CUTOFF, TEST_UNTIL, TRAIN_CUTOFF, TRAIN_UNTIL, fit_ranker
 from api.db import connect
 
@@ -13,9 +14,15 @@ SHOWN = 5
 TOP_K = 10
 
 
-def eval_model(lots: pd.DataFrame, bids: pd.DataFrame, suppliers: pd.DataFrame, max_lots: int) -> lgb.Booster:
+def eval_model(
+    lots: pd.DataFrame,
+    bids: pd.DataFrame,
+    suppliers: pd.DataFrame,
+    max_lots: int,
+    typicality: pd.Series,
+) -> lgb.Booster:
     if not EVAL_MODEL_PATH.exists():
-        train, _ = build_examples(lots, bids, suppliers, TRAIN_CUTOFF, TRAIN_UNTIL, max_lots, seed=1)
+        train, _ = build_examples(lots, bids, suppliers, TRAIN_CUTOFF, TRAIN_UNTIL, max_lots, seed=1, typicality=typicality)
         fit_ranker(train).booster_.save_model(EVAL_MODEL_PATH)
     return lgb.Booster(model_file=str(EVAL_MODEL_PATH))
 
@@ -35,8 +42,9 @@ def main() -> None:
     args = parser.parse_args()
 
     lots, bids, suppliers = load_all()
-    model = eval_model(lots, bids, suppliers, args.max_lots)
-    test, truth = build_examples(lots, bids, suppliers, TEST_CUTOFF, TEST_UNTIL, args.max_lots, seed=2)
+    typicality = lot_typicality(lots)
+    model = eval_model(lots, bids, suppliers, args.max_lots, typicality)
+    test, truth = build_examples(lots, bids, suppliers, TEST_CUTOFF, TEST_UNTIL, args.max_lots, seed=2, typicality=typicality)
     test["score"] = model.predict(test[FEATURES])
     test = test.sort_values(["lot_id", "score"], ascending=[True, False])
     test["position"] = test.groupby("lot_id").cumcount() + 1

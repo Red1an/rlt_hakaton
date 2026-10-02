@@ -32,7 +32,7 @@ const NAV_ITEMS: SidebarItem[] = [
     },
     {
         screen: "enrichment",
-        label: "Обогащение",
+        label: "Новые поставщики",
         iconId: "nav-quality",
     },
     {

@@ -3,6 +3,7 @@ import io
 import shutil
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -12,11 +13,13 @@ from parser.load import HISTORY_DATASET, collect_sources, load_sources
 
 from .db import connect
 from .jobs import enrich_names
-from .recommend import fill_names, recommend
+from .recommend import fill_names, needs_check, recommend
 
 TOP_PREVIEW = 3
 TOP_EXPORT = 10
 NAMES_PER_LOT = 10
+BATCH_NAMES_LIMIT = 300
+COMPUTE_WORKERS = 4
 
 BATCHES_SQL = """
     SELECT
@@ -54,11 +57,14 @@ LOTS_SQL = """
             mode() WITHIN GROUP (ORDER BY left(okpd_code, 5)) AS main_group
         FROM lots
         WHERE okpd_code ~ '^\\d{2}\\.\\d{2}'
-          AND lot_id IN (SELECT lot_id FROM announcements WHERE dataset = %(dataset)s)
+          AND lot_id IN (
+              SELECT lot_id FROM announcements
+              WHERE (dataset = %(dataset)s AND %(lot_id)s::bigint IS NULL) OR lot_id = %(lot_id)s
+          )
         GROUP BY lot_id
     ) g ON g.lot_id = a.lot_id
     LEFT JOIN lot_recommendations r ON r.lot_id = a.lot_id
-    WHERE a.dataset = %(dataset)s
+    WHERE (a.dataset = %(dataset)s AND %(lot_id)s::bigint IS NULL) OR a.lot_id = %(lot_id)s
     ORDER BY a.publish_date, a.lot_id
 """
 
@@ -75,7 +81,7 @@ DELETE_SQL = [
 
 EXPORT_COLUMNS = [
     "lot_id", "publish_date", "subject", "customer_inn", "start_price", "platform", "only_msp",
-    "rank", "supplier_inn", "supplier_name", "novelty", "role", "score",
+    "rank", "supplier_inn", "supplier_name", "novelty", "role", "score", "score_kind",
     "competitive_bids", "competitive_wins", "direct_contracts", "last_bid", "reasons",
 ]
 
@@ -108,10 +114,11 @@ def list_batches() -> list[dict]:
     ]
 
 
-def load_lots(conn, dataset: str) -> list[dict]:
+def load_lots(conn, dataset: str | None, lot_id: int | None = None) -> list[dict]:
     columns = ["lot_id", "publish_date", "start_price", "subject", "is_smp", "customer_inn",
                "is_eshop", "groups", "main_group", "items", "computed_at"]
-    return [dict(zip(columns, row)) for row in conn.execute(LOTS_SQL, {"dataset": dataset})]
+    rows = conn.execute(LOTS_SQL, {"dataset": dataset, "lot_id": lot_id})
+    return [dict(zip(columns, row)) for row in rows]
 
 
 def lot_summary(lot: dict) -> dict:
@@ -128,7 +135,13 @@ def lot_summary(lot: dict) -> dict:
         "computed": lot["items"] is not None,
         "total": len(items),
         "top": [
-            {"inn": item["inn"], "name": item["name"], "score": item["score"], "novelty": item["novelty"]}
+            {
+                "inn": item["inn"],
+                "name": item["name"],
+                "score": item["score"],
+                "scoreKind": item.get("scoreKind", "relative"),
+                "novelty": item["novelty"],
+            }
             for item in items[:TOP_PREVIEW]
         ],
     }
@@ -159,32 +172,54 @@ def compute_lot(conn, lot: dict) -> list[dict]:
     return result["items"]
 
 
-def run_compute(dataset: str) -> None:
+def compute_and_store(lot: dict) -> list[str]:
+    with connect() as conn:
+        items = compute_lot(conn, lot)
+        conn.execute(UPSERT_SQL, [lot["lot_id"], Jsonb(items)])
+        conn.commit()
+    return [item["inn"] for item in items[:NAMES_PER_LOT] if needs_check(item)]
+
+
+def run_compute(dataset: str, only_missing: bool) -> None:
     try:
         with connect() as conn:
             lots = load_lots(conn, dataset)
-            _jobs[dataset] = {"status": "running", "done": 0, "total": len(lots)}
-            missing_names: list[str] = []
-            for index, lot in enumerate(lots, start=1):
-                items = compute_lot(conn, lot)
-                conn.execute(UPSERT_SQL, [lot["lot_id"], Jsonb(items)])
-                conn.commit()
-                missing_names += [item["inn"] for item in items[:NAMES_PER_LOT] if item["name"].startswith("Компания ИНН")]
+        if only_missing:
+            lots = [lot for lot in lots if lot["items"] is None]
+        _jobs[dataset] = {"status": "running", "done": 0, "total": len(lots)}
+        missing_names: list[str] = []
+        with ThreadPoolExecutor(COMPUTE_WORKERS) as pool:
+            for index, inns in enumerate(pool.map(compute_and_store, lots), start=1):
+                missing_names += inns
                 _jobs[dataset] = {"status": "running", "done": index, "total": len(lots)}
         _jobs[dataset] = {"status": "done", "done": len(lots), "total": len(lots)}
         if missing_names:
-            enrich_names(list(dict.fromkeys(missing_names)))
+            enrich_names(list(dict.fromkeys(missing_names)), BATCH_NAMES_LIMIT)
     except Exception as error:
         _jobs[dataset] = {"status": "error", "message": str(error)}
 
 
-def start_compute(dataset: str) -> dict:
+def start_compute(dataset: str, only_missing: bool = False) -> dict:
     with _lock:
         if job_state(dataset).get("status") == "running":
             return job_state(dataset)
         _jobs[dataset] = {"status": "running", "done": 0, "total": 0}
-    threading.Thread(target=run_compute, args=(dataset,), daemon=True).start()
+    threading.Thread(target=run_compute, args=(dataset, only_missing), daemon=True).start()
     return job_state(dataset)
+
+
+def compute_single(lot_id: int) -> dict | None:
+    with connect() as conn:
+        lots = load_lots(conn, None, lot_id)
+    if not lots:
+        return None
+    missing_names = compute_and_store(lots[0])
+    if missing_names:
+        threading.Thread(target=enrich_names, args=(missing_names,), daemon=True).start()
+    with connect() as conn:
+        lot = load_lots(conn, None, lot_id)[0]
+        fill_names(conn, (lot["items"] or [])[:TOP_PREVIEW])
+    return lot_summary(lot)
 
 
 def upload_batch(name: str, files: list[tuple[str, bytes]]) -> dict:
@@ -209,8 +244,7 @@ def upload_batch(name: str, files: list[tuple[str, bytes]]) -> dict:
             conn.commit()
     finally:
         shutil.rmtree(folder, ignore_errors=True)
-    start_compute(name)
-    return {"name": name, "job": job_state(name)}
+    return {"name": name, "lots": added, "job": job_state(name)}
 
 
 def delete_batch(dataset: str) -> None:
@@ -242,7 +276,8 @@ def export_csv(dataset: str, top: int = TOP_EXPORT) -> str:
                 writer.writerow([
                     lot["lot_id"], lot["publish_date"].isoformat(), lot["subject"], lot["customer_inn"],
                     lot["start_price"], "ЭМ" if lot["is_eshop"] else "АИС ГЗ", lot["is_smp"],
-                    rank, item["inn"], item["name"], item["novelty"], item["role"], item["score"],
+                    rank, item["inn"], item["name"], item["novelty"], item["role"],
+                    "" if item["novelty"] == "new" else item["score"], item.get("scoreKind", "relative"),
                     item["part"], item["wins"], item.get("direct", 0), item["last"],
                     " | ".join(reason[1] for reason in item["why"]),
                 ])

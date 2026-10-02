@@ -11,20 +11,24 @@ from worker.egrul import egrul
 from worker.utils import HEADERS
 
 MAX_SITES = 20
+NAMES_LIMIT = 30
+NAMED_SQL = "SELECT inn FROM suppliers WHERE inn = ANY(%s) AND name IS NOT NULL"
 
 _names_lock = threading.Lock()
 
 
-def enrich_names(inns: list[str]) -> None:
+def name_from_egrul(conn: psycopg.Connection, client: httpx.Client, inn: str) -> None:
+    record = egrul(client, inn)
+    if record and record.get("name"):
+        conn.execute("UPDATE suppliers SET name = %s WHERE inn = %s AND name IS NULL", [record["name"], inn])
+
+
+def enrich_names(inns: list[str], limit: int = NAMES_LIMIT) -> None:
     with _names_lock, connect() as conn, httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-        for inn in inns:
-            record = egrul(client, inn)
-            if record and record.get("name"):
-                conn.execute(
-                    "UPDATE suppliers SET name = %s WHERE inn = %s AND name IS NULL",
-                    [record["name"], inn],
-                )
-                conn.commit()
+        named = {inn for (inn,) in conn.execute(NAMED_SQL, [inns])}
+        for inn in [inn for inn in dict.fromkeys(inns) if inn not in named][:limit]:
+            name_from_egrul(conn, client, inn)
+            conn.commit()
 
 
 def search_phrase(category_name: str) -> str:

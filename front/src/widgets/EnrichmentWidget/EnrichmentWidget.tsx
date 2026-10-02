@@ -15,19 +15,11 @@ import styles from "./EnrichmentWidget.module.scss";
 const POLL_INTERVAL_MS = 1500;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const SEARCH_DEBOUNCE_MS = 300;
+const SELECTABLE_CODE = /^\d{2}\.\d{2}/;
+const PER_CATEGORY = 20;
 
-const STATUS_LABELS: Record<string, string> = {
-    ACTIVE: "Действует",
-    LIQUIDATING: "Ликвидируется",
-    REORGANIZING: "Реорганизация",
-    LIQUIDATED: "Ликвидирована",
-    BANKRUPT: "Банкрот",
-    NOT_FOUND: "Не найдена",
-    ERROR: "Ошибка запроса",
-};
-
-const BAD_STATUSES = new Set([ "LIQUIDATED", "BANKRUPT", "NOT_FOUND", "ERROR" ]);
-const WARN_STATUSES = new Set([ "LIQUIDATING", "REORGANIZING" ]);
+type Scope = "category" | "all";
 
 const ROLE_NAMES: Record<string, string> = {
     manufacturer: "Производитель",
@@ -40,15 +32,7 @@ const REGION_NAMES: Record<string, string> = {
     "47": "Ленинградская обл.",
 };
 
-function statusClass(status: string | null): string {
-    if (status && BAD_STATUSES.has(status)) {
-        return styles.statusBad;
-    }
-
-    return status && WARN_STATUSES.has(status) ? styles.statusWarn : styles.statusOk;
-}
-
-function regionName(code?: string | null): string {
+function regionName(code: string | null): string {
     if (!code) {
         return "—";
     }
@@ -56,31 +40,41 @@ function regionName(code?: string | null): string {
     return REGION_NAMES[code] ?? `регион ${ code }`;
 }
 
-const SEARCH_DEBOUNCE_MS = 300;
-
-type Scope = "all" | "category";
-
-function percent(part: number, total: number): number {
-    return total > 0 ? Math.round(100 * part / total) : 0;
+function formatDate(value: string | null): string {
+    return value ? new Date(value).toLocaleDateString("ru-RU") : "—";
 }
 
 function jobSummary(job: EnrichmentJob): string | null {
-    const scope = job.okpd ? `категория ${ job.okpd }` : "все категории";
+    const found = job.found ?? job.results?.length ?? 0;
+
+    if (job.status === "done" && !job.okpd) {
+        return `Готово: пройдено категорий ${ job.categoriesDone ?? 0 }, новых компаний добавлено ${ found }`;
+    }
 
     if (job.status === "done") {
-        return `Готово (${ scope }): проверено ${ job.done ?? 0 }, закрытых компаний ${ job.closed ?? 0 }, не найдено ${ job.notFound ?? 0 }`;
+        return found > 0
+            ? `Готово: категория ${ job.okpd }, новых компаний добавлено ${ found }`
+            : `Новых компаний в категории ${ job.okpd } не нашлось: все подходящие уже есть в базе`;
     }
 
     if (job.status === "stopped" || job.status === "error") {
-        return `Остановлено: ${ job.message ?? "неизвестная ошибка" }. Проверено ${ job.done ?? 0 }`;
+        return `Остановлено: ${ job.message ?? "неизвестная ошибка" }. Добавлено ${ found }`;
     }
 
     return null;
 }
 
+function progressPercent(job: EnrichmentJob, found: number): number {
+    if (job.okpd) {
+        return job.limit ? Math.round(100 * found / job.limit) : 0;
+    }
+
+    return job.categories ? Math.round(100 * (job.categoriesDone ?? 0) / job.categories) : 0;
+}
+
 export default function EnrichmentWidget() {
     const [ state, setState ] = useState<EnrichmentState | null>(null);
-    const [ scope, setScope ] = useState<Scope>("all");
+    const [ scope, setScope ] = useState<Scope>("category");
     const [ categoryTerm, setCategoryTerm ] = useState("");
     const [ categories, setCategories ] = useState<OkpdCategory[]>([]);
     const [ limit, setLimit ] = useState(String(DEFAULT_LIMIT));
@@ -120,10 +114,6 @@ export default function EnrichmentWidget() {
     }, [ isRunning ]);
 
     useEffect(() => {
-        if (scope !== "category") {
-            return;
-        }
-
         let isAlive = true;
         const timer = setTimeout(() => {
             searchCategories(categoryTerm)
@@ -139,16 +129,34 @@ export default function EnrichmentWidget() {
             isAlive = false;
             clearTimeout(timer);
         };
-    }, [ categoryTerm, scope ]);
+    }, [ categoryTerm ]);
+
+    const job = state?.job;
+    const maxLimit = state?.maxLimit ?? MAX_LIMIT;
+    const perCategory = state?.perCategory ?? PER_CATEGORY;
+    const found = job?.found ?? 0;
+    const suppliers = state?.suppliers;
+    const summary = job ? jobSummary(job) : null;
+    const results: EnrichmentResult[] = job?.results ?? [];
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setError(null);
 
-        const okpd = scope === "category" ? categoryTerm.trim().split(" ")[0] : "";
+        if (scope === "all") {
+            try {
+                setState(await startEnrichment(null, perCategory));
+            } catch (reason) {
+                setError(reason instanceof Error ? reason.message : "Не удалось запустить поиск");
+            }
 
-        if (scope === "category" && okpd === "") {
-            setError("Выберите категорию ОКПД2");
+            return;
+        }
+
+        const okpd = categoryTerm.trim().split(" ")[0];
+
+        if (!SELECTABLE_CODE.test(okpd)) {
+            setError("Выберите конкретную категорию ОКПД2 вида XX.XX, например 45.20");
 
             return;
         }
@@ -156,66 +164,47 @@ export default function EnrichmentWidget() {
         const count = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), maxLimit);
 
         try {
-            setState(await startEnrichment(okpd === "" ? null : okpd, count));
+            setState(await startEnrichment(okpd, count));
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : "Не удалось запустить обогащение");
+            setError(reason instanceof Error ? reason.message : "Не удалось запустить поиск");
         }
     }
-
-    const job = state?.job;
-    const maxLimit = state?.maxLimit ?? MAX_LIMIT;
-    const suppliers = state?.suppliers;
-    const summary = job ? jobSummary(job) : null;
-    const results: EnrichmentResult[] = job?.results ?? [];
 
     return (
         <div className={styles.page}>
             <section className={styles.card}>
-                <h1 className={styles.title}>Обогащение данных о компаниях</h1>
+                <h1 className={styles.title}>Поиск новых поставщиков</h1>
 
                 <p className={styles.lead}>
-                    Сверяем поставщиков с ЕГРЮЛ через DaData: название, статус, ОКВЭД, адрес и дату регистрации.
-                    Ликвидированные компании и банкроты убираются из рекомендаций, роль определяется по ОКВЭД.
-                    Сначала проверяются поставщики из рекомендаций и лучшие в категории.
+                    Ищем в ЕГРЮЛ через DaData действующие компании Санкт-Петербурга и Ленинградской области,
+                    у которых основной ОКВЭД совпадает с выбранной категорией. В базу добавляются только те,
+                    кого в ней ещё нет, существующие записи не меняются. Роль определяется по ОКВЭД.
                 </p>
 
                 { suppliers && (
                     <div className={styles.stats}>
                         <div className={styles.stat}>
-                            <span className={styles.statValue}>
-                                { suppliers.enriched.toLocaleString("ru-RU") }
-                            </span>
-                            <span className={styles.statLabel}>
-                                проверено из { suppliers.total.toLocaleString("ru-RU") } ({ percent(suppliers.enriched, suppliers.total) }%)
-                            </span>
+                            <span className={styles.statValue}>{ suppliers.found.toLocaleString("ru-RU") }</span>
+                            <span className={styles.statLabel}>новых найдено в ЕГРЮЛ</span>
                         </div>
 
                         <div className={styles.stat}>
-                            <span className={styles.statValue}>{ suppliers.closed }</span>
-                            <span className={styles.statLabel}>ликвидированы или банкроты — скрыты</span>
+                            <span className={styles.statValue}>{ suppliers.web.toLocaleString("ru-RU") }</span>
+                            <span className={styles.statLabel}>найдено ранее в открытых источниках</span>
                         </div>
 
                         <div className={styles.stat}>
-                            <span className={styles.statValue}>{ suppliers.warning }</span>
-                            <span className={styles.statLabel}>ликвидируются или реорганизуются</span>
+                            <span className={styles.statValue}>{ suppliers.total.toLocaleString("ru-RU") }</span>
+                            <span className={styles.statLabel}>всего компаний в базе</span>
                         </div>
-
                     </div>
                 ) }
 
                 <form className={styles.form} onSubmit={handleSubmit}>
                     <div className={styles.field}>
-                        <span className={styles.label}>Что проверять</span>
+                        <span className={styles.label}>Где искать</span>
 
                         <div className={styles.segmented}>
-                            <button
-                                type="button"
-                                className={ `${ styles.segment } ${ scope === "all" ? styles.segmentActive : "" }` }
-                                onClick={() => setScope("all")}
-                            >
-                                Все категории
-                            </button>
-
                             <button
                                 type="button"
                                 className={ `${ styles.segment } ${ scope === "category" ? styles.segmentActive : "" }` }
@@ -223,8 +212,23 @@ export default function EnrichmentWidget() {
                             >
                                 Одна категория
                             </button>
+
+                            <button
+                                type="button"
+                                className={ `${ styles.segment } ${ scope === "all" ? styles.segmentActive : "" }` }
+                                onClick={() => setScope("all")}
+                            >
+                                Все категории
+                            </button>
                         </div>
                     </div>
+
+                    { scope === "all" && (
+                        <p className={styles.hint}>
+                            Пройдём по всем категориям из истории закупок, в каждой добавим не больше { perCategory } новых.
+                            Категории, где уже найдено { perCategory }, пропускаются.
+                        </p>
+                    ) }
 
                     { scope === "category" && (
                         <label className={ `${ styles.field } ${ styles.fieldWide }` }>
@@ -235,7 +239,7 @@ export default function EnrichmentWidget() {
                                 type="text"
                                 list="enrichment-categories"
                                 value={ categoryTerm }
-                                placeholder="Код или название, например 17.12"
+                                placeholder="Код или название, например 45.20"
                                 onChange={(event) => setCategoryTerm(event.target.value)}
                             />
 
@@ -247,36 +251,39 @@ export default function EnrichmentWidget() {
                         </label>
                     ) }
 
-                    <label className={styles.field}>
-                        <span className={styles.label}>Сколько компаний за раз (до { maxLimit })</span>
+                    { scope === "category" && (
+                        <label className={styles.field}>
+                            <span className={styles.label}>Сколько новых добавить (до { maxLimit })</span>
 
-                        <input
-                            className={ `${ styles.input } ${ styles.inputShort }` }
-                            type="number"
-                            min={ 1 }
-                            max={ maxLimit }
-                            value={ limit }
-                            onChange={(event) => setLimit(event.target.value)}
-                        />
-                    </label>
+                            <input
+                                className={ `${ styles.input } ${ styles.inputShort }` }
+                                type="number"
+                                min={ 1 }
+                                max={ maxLimit }
+                                value={ limit }
+                                onChange={(event) => setLimit(event.target.value)}
+                            />
+                        </label>
+                    ) }
 
                     <button className={styles.primary} type="submit" disabled={ isRunning }>
-                        { isRunning ? "Проверяем…" : "Обогатить" }
+                        { isRunning ? "Ищем…" : "Найти новых" }
                     </button>
                 </form>
 
                 { isRunning && job && (
                     <div className={styles.progress}>
                         <div className={styles.progressText}>
-                            { job.total
-                                ? `Проверено ${ job.done ?? 0 } из ${ job.total }${ job.closed ? ` · закрытых найдено: ${ job.closed }` : "" }`
-                                : "Отбираем компании для проверки…" }
+                            { job.okpd
+                                ? `Категория ${ job.okpd }: найдено новых ${ found } из ${ job.limit ?? 0 }`
+                                : `Категорий пройдено ${ job.categoriesDone ?? 0 } из ${ job.categories ?? "…" }${
+                                    job.current ? ` · сейчас ${ job.current }` : "" } · новых найдено ${ found }` }
                         </div>
 
                         <div className={styles.progressBar}>
                             <div
                                 className={styles.progressFill}
-                                style={{ width: `${ percent(job.done ?? 0, job.total ?? 0) }%` }}
+                                style={{ width: `${ progressPercent(job, found) }%` }}
                             />
                         </div>
                     </div>
@@ -293,7 +300,8 @@ export default function EnrichmentWidget() {
                 { results.length > 0 && (
                     <div className={styles.results}>
                         <h2 className={styles.subtitle}>
-                            { isRunning ? "Проверяем" : "Проверены в последнем запуске" } · { results.length }
+                            { isRunning ? "Найдены" : "Добавлены в последнем запуске" } · { found }
+                            { found > results.length && ` (показаны последние ${ results.length })` }
                         </h2>
 
                         <div className={styles.tableWrap}>
@@ -302,10 +310,11 @@ export default function EnrichmentWidget() {
                                     <tr>
                                         <th>Компания</th>
                                         <th>ИНН</th>
-                                        <th>Статус</th>
                                         <th>Роль</th>
                                         <th>ОКВЭД</th>
                                         <th>Регион</th>
+                                        <th>Регистрация</th>
+                                        <th>Адрес</th>
                                     </tr>
                                 </thead>
 
@@ -314,16 +323,13 @@ export default function EnrichmentWidget() {
                                         <tr key={ item.inn }>
                                             <td>{ item.name ?? "—" }</td>
                                             <td className={styles.mono}>{ item.inn }</td>
-                                            <td>
-                                                <span className={ `${ styles.status } ${ statusClass(item.status) }` }>
-                                                    { STATUS_LABELS[item.status ?? ""] ?? item.status ?? "—" }
-                                                </span>
-                                            </td>
                                             <td title={ item.roleReason ?? undefined }>
                                                 { item.role ? ROLE_NAMES[item.role] : "—" }
                                             </td>
                                             <td className={styles.mono}>{ item.okved ?? "—" }</td>
                                             <td>{ regionName(item.regionCode) }</td>
+                                            <td className={styles.mono}>{ formatDate(item.regDate) }</td>
+                                            <td>{ item.address ?? "—" }</td>
                                         </tr>
                                     )) }
                                 </tbody>

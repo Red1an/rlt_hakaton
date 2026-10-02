@@ -16,6 +16,83 @@ import styles from "./VariantsWidget.module.scss";
 
 const ROLE_ORDER: SupplierRole[] = [ "man", "dist", "sup" ];
 
+const SUITABILITY_HINT = "Подходимость 0–100 — насколько компания похожа на тех, кто реально подаёт заявки "
+    + "на такие закупки. Шкала общая для всех поисков и проверена на закупках III квартала 2025 года";
+
+function suitabilityHint(lift: number | null): string {
+    if (lift === null || lift < 1.05) {
+        return SUITABILITY_HINT;
+    }
+
+    return `${ SUITABILITY_HINT }. Компании с такой оценкой подают заявки в ${
+        lift.toLocaleString("ru-RU") } раза чаще среднего кандидата`;
+}
+
+function ScoreBlock({ variant }: { variant: SupplierVariant }) {
+    if (variant.scoreKind === "new") {
+        return (
+            <>
+                <span className={styles.scoreLabel}>Подходимость</span>
+
+                <div className={styles.scoreValue}>
+                    <span className={styles.scoreMax}>нет истории закупок</span>
+                </div>
+            </>
+        );
+    }
+
+    const hint = variant.scoreKind === "suitability" ? suitabilityHint(variant.lift) : undefined;
+
+    return (
+        <>
+            <span className={styles.scoreLabel} title={ hint }>
+                { variant.scoreKind === "suitability" ? "Подходимость" : "Релевантность" }
+            </span>
+
+            <div className={styles.scoreValue} title={ hint }>
+                <span className={styles.scoreNumber}>{ variant.score }</span>
+                <span className={styles.scoreMax}>/ 100</span>
+            </div>
+
+            <div className={styles.scoreBar}>
+                <div
+                    className={styles.scoreBarFill}
+                    style={{ width: `${ variant.score }%` }}
+                />
+            </div>
+        </>
+    );
+}
+
+function VerificationBadge({ verified }: { verified: SupplierVariant["verified"] }) {
+    if (verified?.by === "dadata") {
+        const date = verified.at ? new Date(verified.at).toLocaleDateString("ru-RU") : "";
+
+        return (
+            <span
+                className={ `${ styles.verified } ${ styles.verifiedOk }` }
+                title="Статус, ОКВЭД, адрес и регион сверены с ФНС через DaData"
+            >
+                ✓ Сверено с ЕГРЮЛ{ date && ` · ${ date }` }
+            </span>
+        );
+    }
+
+    if (verified?.by === "egrul") {
+        return (
+            <span className={styles.verified} title="Название получено из открытых данных ФНС">
+                Название из ЕГРЮЛ
+            </span>
+        );
+    }
+
+    return (
+        <span className={styles.verified} title="Сведения только из истории закупок, реквизиты не проверялись">
+            Данные из закупок
+        </span>
+    );
+}
+
 interface VariantCardProps {
     variant: SupplierVariant;
     inShortList: boolean;
@@ -56,6 +133,10 @@ function VariantCard({
                         />
                         { ROLE_LABELS[variant.role] }
                     </span>
+
+                    <span className={styles.sep}>·</span>
+
+                    <VerificationBadge verified={ variant.verified } />
                 </div>
 
                 <div className={styles.cardStats}>
@@ -88,19 +169,7 @@ function VariantCard({
             </div>
 
             <div className={styles.cardSide}>
-                <span className={styles.scoreLabel}>Релевантность</span>
-
-                <div className={styles.scoreValue}>
-                    <span className={styles.scoreNumber}>{ variant.score }</span>
-                    <span className={styles.scoreMax}>/ 100</span>
-                </div>
-
-                <div className={styles.scoreBar}>
-                    <div
-                        className={styles.scoreBarFill}
-                        style={{ width: `${ variant.score }%` }}
-                    />
-                </div>
+                <ScoreBlock variant={ variant } />
 
                 <div className={styles.sideSpacer} />
 
@@ -178,6 +247,8 @@ function VariantDrawer({
                                 />
                                 { ROLE_LABELS[variant.role] }
                             </span>
+
+                            <VerificationBadge verified={ variant.verified } />
 
                             <a
                                 className={styles.drawerSite}

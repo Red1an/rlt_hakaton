@@ -18,6 +18,8 @@ PLATFORM_LABELS = {True: "Электронный магазин", False: "АИС
 TOP_BY_WINS = 50
 TOP_BY_RECENCY = 50
 CONTENDER_SLOTS = 5
+CONTENDER_MIN_SCORE = 40
+SUITABILITY_FLOOR = 0.005
 HISTORY_ROWS = 5
 REASONS_SHOWN = 3
 FACTORS_SHOWN = 5
@@ -26,7 +28,10 @@ EMPTY = "—"
 SIMILAR_LOTS_SQL = """
     CREATE TEMP TABLE similar_lots ON COMMIT DROP AS
     SELECT s.lot_id, count(b.supplier_inn) AS participants
-    FROM (SELECT DISTINCT lot_id FROM lots WHERE okpd_code LIKE ANY(%(prefixes)s)) s
+    FROM (
+        SELECT DISTINCT lot_id FROM lots
+        WHERE left(okpd_code, 5) = ANY(%(groups)s) AND okpd_code LIKE ANY(%(prefixes)s)
+    ) s
     JOIN bids b ON b.lot_id = s.lot_id
     GROUP BY s.lot_id
 """
@@ -43,13 +48,14 @@ HISTORY_SQL = """
         count(*) FILTER (WHERE a.is_eshop_or_aisgz)                     AS eshop_bids,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY a.start_price)      AS typical_price,
         count(*) FILTER (WHERE a.customer_inn = %(customer)s)           AS customer_group_bids,
-        s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date
+        array_agg(b.lot_id)                                             AS lot_ids,
+        s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date, s.enriched_at
     FROM bids b
     JOIN similar_lots sl ON sl.lot_id = b.lot_id
     JOIN announcements a ON a.lot_id = b.lot_id
     JOIN suppliers s ON s.inn = b.supplier_inn
     WHERE (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
-    GROUP BY b.supplier_inn, s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date
+    GROUP BY b.supplier_inn, s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date, s.enriched_at
 """
 
 CUSTOMER_BIDS_SQL = """
@@ -61,9 +67,9 @@ CUSTOMER_BIDS_SQL = """
 """
 
 NEW_SQL = """
-    SELECT inn, kpp, name, role, role_reason, site, contacts, status, ogrn, okved_main, region_code, reg_date
+    SELECT inn, kpp, name, role, role_reason, site, contacts, status, ogrn, okved_main, region_code, reg_date, enriched_at, source
     FROM suppliers s
-    WHERE source = 'web'
+    WHERE source IN ('web', 'dadata')
       AND (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
       AND EXISTS (
           SELECT 1 FROM unnest(okpds) code, unnest(%(codes)s::text[]) wanted
@@ -86,9 +92,11 @@ LOT_HISTORY_SQL = """
 """
 
 FACTOR_GROUPS = {
-    "experience": ["part", "wins", "win_share", "comp_part", "comp_wins", "comp_win_share"],
-    "direct": ["direct_cnt"],
-    "profile": ["total_bids", "groups_cnt", "class_bids"],
+    "experience": ["comp_part", "comp_wins", "comp_win_share"],
+    "volume": ["part", "wins", "win_share"],
+    "direct": ["direct_cnt", "direct_share"],
+    "profile": ["total_bids", "groups_cnt", "class_bids", "spec_share"],
+    "typicality": ["typicality"],
     "activity": ["days_since_last"],
     "price": ["price_fit"],
     "platform": ["platform_share"],
@@ -98,6 +106,8 @@ FACTOR_GROUPS = {
 }
 
 GROUP_ICONS = {
+    "typicality": "🎯",
+    "volume": "📊",
     "experience": "★",
     "direct": "🤝",
     "profile": "🧭",
@@ -217,10 +227,23 @@ def group_text(group: str, positive: bool, row: dict, lot: dict, values: dict[st
         wins = row["comp_wins"]
         share = round(100 * wins / row["comp_part"])
         return f"В конкурентных закупках: {bids_word(row['comp_part'])}, {wins} {plural(wins, 'победа', 'победы', 'побед')} ({share}%)"
-    if group == "direct":
-        if not positive or not row["direct_cnt"]:
+    if group == "volume":
+        if positive:
+            return f"Всего в категории: {bids_word(row['part'])}, из них без конкурентов {row['direct_cnt']}"
+        return f"Мало заявок в категории: {bids_word(row['part'])}"
+    if group == "typicality":
+        if row["typicality"] != row["typicality"]:
             return None
-        return f"Договоры без конкурентов (единственный участник): {row['direct_cnt']}"
+        if positive:
+            return "Профиль закупок совпадает с категорией: предметы его лотов типичны для неё"
+        return "Предметы его лотов нетипичны для категории: часто другие работы и товары"
+    if group == "direct":
+        if not row["direct_cnt"]:
+            return None
+        share = round(100 * row["direct_cnt"] / row["part"])
+        if positive:
+            return f"Договоры без конкурентов (единственный участник): {row['direct_cnt']}"
+        return f"Часто работает без конкуренции: {share}% заявок — единственный участник"
     if group == "profile":
         if positive:
             return f"Профильный поставщик: {bids_word(round(values['class_bids']))} в категориях {lot['okpd'][:2]}.*"
@@ -304,7 +327,26 @@ def is_contender(row: dict) -> bool:
     return row["comp_part"] >= 3 and row["comp_wins"] / row["comp_part"] < 0.2
 
 
-def history_item(row: dict, lot: dict, score: int, impacts: dict[str, float] | None) -> dict:
+def verification(row: dict) -> dict | None:
+    if row.get("enriched_at") and row.get("status") != "NOT_FOUND":
+        return {"by": "dadata", "at": row["enriched_at"].date().isoformat()}
+    if row.get("name"):
+        return {"by": "egrul", "at": None}
+    return None
+
+
+def needs_check(item: dict) -> bool:
+    return item["name"].startswith("Компания ИНН")
+
+
+def suitability(probability: float, ceiling: float) -> int:
+    share = math.log(max(probability, SUITABILITY_FLOOR) / SUITABILITY_FLOOR) / math.log(ceiling / SUITABILITY_FLOOR)
+    return round(100 * min(max(share, 0.0), 1.0))
+
+
+def history_item(
+    row: dict, lot: dict, score: int, impacts: dict[str, float] | None, score_kind: str, lift: float | None
+) -> dict:
     why, factors = explain(row, lot, impacts)
     return {
         "id": row["inn"],
@@ -314,6 +356,8 @@ def history_item(row: dict, lot: dict, score: int, impacts: dict[str, float] | N
         "novelty": "existing",
         "role": ROLE_CODES.get(row["role"], "sup"),
         "score": score,
+        "scoreKind": score_kind,
+        "lift": lift,
         "part": row["comp_part"],
         "wins": row["comp_wins"],
         "direct": row["direct_cnt"],
@@ -324,6 +368,7 @@ def history_item(row: dict, lot: dict, score: int, impacts: dict[str, float] | N
         "requisites": requisites_for(row),
         "roleReason": row["role_reason"],
         "status": row.get("status"),
+        "verified": verification(row),
         "history": [],
         "isMsp": row["is_msp"],
         "isContender": is_contender(row),
@@ -333,7 +378,8 @@ def history_item(row: dict, lot: dict, score: int, impacts: dict[str, float] | N
 def new_item(row: dict) -> dict:
     role_code = ROLE_CODES.get(row["role"], "sup")
     region = row["region_code"] or region_code(row["inn"], row["kpp"])
-    why = [["✦", "Нет в истории госзакупок, найден в открытых источниках"]]
+    found_in = "в ЕГРЮЛ по основному ОКВЭД" if row["source"] == "dadata" else "в открытых источниках"
+    why = [["✦", f"Нет в истории госзакупок, найден {found_in}"]]
     if row["role_reason"]:
         why.append(["⚙", row["role_reason"]])
     age = company_age(row["reg_date"], date.today())
@@ -348,6 +394,7 @@ def new_item(row: dict) -> dict:
         "novelty": "new",
         "role": role_code,
         "score": NEW_ROLE_SCORES[role_code],
+        "scoreKind": "new",
         "part": 0,
         "wins": 0,
         "direct": 0,
@@ -358,6 +405,7 @@ def new_item(row: dict) -> dict:
         "requisites": requisites_for(row, contacts),
         "roleReason": row["role_reason"],
         "status": row["status"],
+        "verified": verification(row),
         "history": [],
         "isMsp": None,
     }
@@ -377,6 +425,7 @@ def load_rows(conn: psycopg.Connection, params: dict, lot_date: date) -> list[di
                 "days": (lot_date - record["last_date"]).days,
                 "typical_price": float(record["typical_price"]),
                 "customer_bids": customer_bids.get(inn, 0),
+                "typicality": model.lots_typicality(record.pop("lot_ids")),
                 "region": region,
                 "is_local": region in LOCAL_REGIONS,
                 "is_msp": profiles.get(inn, (0, 0, False))[2],
@@ -406,7 +455,12 @@ def recommend(
     lot_date: date | None = None,
 ) -> dict:
     codes = [okpd] + [code for code in extra_codes or [] if code != okpd]
-    params = {"prefixes": [f"{code}%" for code in codes], "codes": codes, "customer": customer_inn}
+    params = {
+        "prefixes": [f"{code}%" for code in codes],
+        "groups": sorted({code[:5] for code in codes}),
+        "codes": codes,
+        "customer": customer_inn,
+    }
     lot_date = lot_date or conn.execute(HISTORY_END_SQL).fetchone()[0] + timedelta(days=1)
     lot = {"okpd": okpd, "nmck": float(nmck or 0), "eshop": eshop, "smp": msp_only, "customer": customer_inn}
     conn.execute(SIMILAR_LOTS_SQL, params)
@@ -422,14 +476,25 @@ def recommend(
             raw_scores = list(raw_scores)
         else:
             raw_scores, impacts = [formula_score(row, lot) for row in candidates], [None] * len(candidates)
+        probabilities = model.participation(raw_scores) if model.model_available() else None
+        if probabilities is None:
+            scores, lifts, score_kind = scale(raw_scores), [None] * len(candidates), "relative"
+        else:
+            base_rate, ceiling = model.calibration_scale()
+            scores = [suitability(probability, ceiling) for probability in probabilities]
+            lifts = [round(probability / base_rate, 1) if base_rate else None for probability in probabilities]
+            score_kind = "suitability"
         history = [
-            history_item(row, lot, score, impact)
-            for row, score, impact in zip(candidates, scale(raw_scores), impacts)
+            history_item(row, lot, score, impact, score_kind, lift)
+            for row, score, impact, lift, _ in sorted(
+                zip(candidates, scores, impacts, lifts, raw_scores),
+                key=lambda entry: entry[4],
+                reverse=True,
+            )
         ]
 
-    history = sorted(history, key=lambda item: item["score"], reverse=True)
     top, rest = history[: limit - CONTENDER_SLOTS], history[limit - CONTENDER_SLOTS:]
-    contenders = [item for item in rest if item["isContender"]][:CONTENDER_SLOTS]
+    contenders = [item for item in rest if item["isContender"] and item["score"] >= CONTENDER_MIN_SCORE][:CONTENDER_SLOTS]
     fill = [item for item in rest if item not in contenders][: limit - len(top) - len(contenders)]
     history = top + contenders + fill
 
@@ -450,11 +515,19 @@ def recommend(
 
 
 def fill_names(conn: psycopg.Connection, items: list[dict]) -> list[dict]:
-    missing = [item["inn"] for item in items if item["name"].startswith("Компания ИНН")]
-    if missing:
-        names = dict(conn.execute("SELECT inn, name FROM suppliers WHERE inn = ANY(%s) AND name IS NOT NULL", [missing]))
-        for item in items:
-            if item["inn"] in names:
-                item["name"] = names[item["inn"]]
-                item["requisites"]["ogrn"] = egrul_record(item["inn"]).get("ogrn") or EMPTY
+    if not items:
+        return items
+    rows = conn.execute(
+        "SELECT inn, name, status, enriched_at, ogrn FROM suppliers WHERE inn = ANY(%s)",
+        [[item["inn"] for item in items]],
+    )
+    known = {row[0]: dict(zip(("inn", "name", "status", "enriched_at", "ogrn"), row)) for row in rows}
+    for item in items:
+        row = known.get(item["inn"])
+        if row is None:
+            continue
+        item["verified"] = verification(row)
+        if row["name"] and item["name"].startswith("Компания ИНН"):
+            item["name"] = row["name"]
+            item["requisites"]["ogrn"] = row["ogrn"] or egrul_record(item["inn"]).get("ogrn") or EMPTY
     return items

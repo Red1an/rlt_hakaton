@@ -34,11 +34,33 @@ PROFILE_SQL = [
     """,
 ]
 
+TYPICALITY_FILE = "lot_typicality.npz"
+CALIBRATOR_FILE = "calibration.txt"
+
 _lock = threading.Lock()
+_typicality: tuple[np.ndarray, np.ndarray] | None = None
 _booster: lgb.Booster | None = None
 _features: list[str] = []
+_calibrator: lgb.Booster | None = None
+_max_probability = 1.0
+_base_rate = 0.0
 _profiles: dict[str, tuple[int, int, bool]] | None = None
 _class_bids: dict[tuple[str, str], int] | None = None
+
+
+def lots_typicality(lot_ids: list[int]) -> float:
+    global _typicality
+    path = MODEL_DIR / TYPICALITY_FILE
+    if _typicality is None:
+        if not path.exists():
+            return float("nan")
+        with np.load(path) as data:
+            _typicality = (data["lot_ids"], data["values"])
+    known_ids, values = _typicality
+    wanted = np.asarray(lot_ids, dtype=np.int64)
+    positions = np.clip(np.searchsorted(known_ids, wanted), 0, len(known_ids) - 1)
+    found = values[positions][known_ids[positions] == wanted]
+    return float(found.mean()) if len(found) else float("nan")
 
 
 def model_available() -> bool:
@@ -46,12 +68,37 @@ def model_available() -> bool:
 
 
 def booster() -> tuple[lgb.Booster, list[str]]:
-    global _booster, _features
+    global _booster, _features, _calibrator, _max_probability, _base_rate
     with _lock:
         if _booster is None:
-            _booster = lgb.Booster(model_file=str(MODEL_DIR / "model.txt"))
-            _features = json.loads((MODEL_DIR / "metrics.json").read_text(encoding="utf-8"))["features"]
+            lines = (MODEL_DIR / "model.txt").read_text(encoding="utf-8").splitlines()
+            _booster = lgb.Booster(model_str="\n".join(lines) + "\n")
+            metrics = json.loads((MODEL_DIR / "metrics.json").read_text(encoding="utf-8"))
+            _features = metrics["features"]
+            calibration = metrics.get("calibration") or {}
+            calibrator_path = MODEL_DIR / CALIBRATOR_FILE
+            if calibration and calibrator_path.exists():
+                calibrator_lines = calibrator_path.read_text(encoding="utf-8").splitlines()
+                _calibrator = lgb.Booster(model_str="\n".join(calibrator_lines) + "\n")
+                _max_probability = calibration.get("maxProbability", 1.0)
+                _base_rate = calibration.get("baseRate", 0.0)
     return _booster, _features
+
+
+def calibration_scale() -> tuple[float, float]:
+    booster()
+    return _base_rate, _max_probability
+
+
+def participation(raw_scores: list[float]) -> list[float] | None:
+    booster()
+    if _calibrator is None:
+        return None
+    raw = np.asarray(raw_scores, dtype=float)
+    ranks = np.empty(len(raw))
+    ranks[np.argsort(-raw)] = np.arange(1, len(raw) + 1)
+    matrix = np.column_stack([raw, raw - raw.max(), ranks])
+    return [float(value) for value in np.minimum(_calibrator.predict(matrix), _max_probability)]
 
 
 def supplier_profiles() -> tuple[dict[str, tuple[int, int, bool]], dict[tuple[str, str], int]]:
@@ -78,6 +125,9 @@ def feature_values(row: dict, lot: dict) -> dict[str, float]:
         "comp_wins": row["comp_wins"],
         "comp_win_share": row["comp_wins"] / row["comp_part"] if row["comp_part"] else float("nan"),
         "direct_cnt": row["direct_cnt"],
+        "direct_share": row["direct_cnt"] / row["part"],
+        "spec_share": row["part"] / max(total_bids, row["part"]),
+        "typicality": row["typicality"],
         "days_since_last": row["days"],
         "platform_share": eshop_share if lot["eshop"] else 1 - eshop_share,
         "price_fit": min(1.0, max(0.0, 1 - abs(math.log10(nmck / max(row["typical_price"], 1.0))) / 2)),

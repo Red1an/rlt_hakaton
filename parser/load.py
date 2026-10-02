@@ -20,29 +20,29 @@ REQUIRED_TABLES = ["okpd", "announcements", "lots", "suppliers", "bids"]
 
 RAW_FILES = {
     "stg_lots": (
-        "Извещения",
+        "извещениями",
         ["publish_date", "procedure_id", "lot_id", "start_price", "reqnum", "procedure_name",
          "subject", "is_smp", "customer_inn", "customer_kpp", "is_eshop_or_aisgz"],
     ),
     "stg_bids": (
-        "Поставщики",
+        "заявками поставщиков",
         ["lot_id", "supplier_inn", "supplier_kpp", "is_winner"],
     ),
     "stg_products": (
-        "ТРУ",
+        "товарами (ТРУ)",
         ["lot_id", "product_name", "okpd2_code"],
     ),
 }
 
 
-def find_csv_files(data_dir: Path, prefix: str) -> list[Path]:
-    return sorted(p for p in data_dir.glob("*.csv") if p.name.startswith(prefix))
-
-
 def read_header(path: Path) -> list[str]:
     with path.open(encoding="utf-8-sig") as source:
         first_line = source.readline().strip()
-    return [column.strip().strip('"') for column in first_line.split(";")]
+    return [column.strip().strip('"').lower() for column in first_line.split(";")]
+
+
+def detect_table(header: list[str]) -> str | None:
+    return next((table for table, (_, columns) in RAW_FILES.items() if header == columns), None)
 
 
 OPTIONAL_TABLES = {"stg_bids"}
@@ -55,16 +55,17 @@ class SourceError(ValueError):
 
 def collect_sources(data_dir: Path) -> dict[str, list[Path]]:
     errors = []
-    sources = {}
-    for table, (prefix, expected_columns) in RAW_FILES.items():
-        files = find_csv_files(data_dir, prefix)
-        if not files and table not in OPTIONAL_TABLES:
-            errors.append(f"нет файлов {prefix}*.csv")
-        for path in files:
-            header = read_header(path)
-            if header != expected_columns:
-                errors.append(f"{path.name}: колонки {header}, ожидались {expected_columns}")
-        sources[table] = files
+    sources: dict[str, list[Path]] = {table: [] for table in RAW_FILES}
+    for path in sorted(data_dir.glob("*.csv")):
+        header = read_header(path)
+        table = detect_table(header)
+        if table is None:
+            errors.append(f"{path.name}: не похож ни на один из форматов, колонки {header}")
+        else:
+            sources[table].append(path)
+    for table, (label, expected_columns) in RAW_FILES.items():
+        if not sources[table] and table not in OPTIONAL_TABLES:
+            errors.append(f"нет файла с {label}, нужны колонки {expected_columns}")
     if errors:
         raise SourceError(f"Проблемы с данными в {data_dir}:\n  " + "\n  ".join(errors))
     return sources

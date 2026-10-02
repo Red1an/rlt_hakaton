@@ -13,6 +13,7 @@ export {
     fetchCategories,
     fetchLotVariants,
     fetchVariants,
+    isSelectableCategory,
     normalizeMatchValues,
     searchCategories,
     submitSearch,
@@ -55,6 +56,7 @@ export {
     formatDate,
     formatRub,
     jobProgress,
+    computeLot,
     recomputeBatch,
     uploadBatch,
 } from "./batchService";

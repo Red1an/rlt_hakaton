@@ -1,7 +1,7 @@
 import * as batchApi from "../api/batches";
 import * as matchApi from "../api/match";
 import type {
-    SupplierRole, SupplierVariantDto,
+    ScoreKind, SupplierRole, SupplierVariantDto, SupplierVerificationDto,
 } from "../api/types";
 
 export type { SupplierRole } from "../api/types";
@@ -75,10 +75,19 @@ export const INITIAL_MATCH_STATE: MatchFormState = {
  * Дополняет сохранённые значения формы текущими дефолтами. Нужна после
  * появления новых полей: в хранилище лежит объект без них.
  */
+export function isSelectableCategory(code: string): boolean {
+    return /^\d{2}\.\d{2}/.test(code);
+}
+
 export function normalizeMatchValues(values?: Partial<MatchFormValues> | null): MatchFormValues {
-    return {
+    const merged = {
         ...INITIAL_MATCH_VALUES,
         ...values,
+    };
+
+    return {
+        ...merged,
+        category: merged.category && isSelectableCategory(merged.category.code) ? merged.category : null,
     };
 }
 
@@ -115,6 +124,8 @@ export interface SupplierVariant {
     isNew: boolean;
     role: SupplierRole;
     score: number;
+    scoreKind: ScoreKind;
+    lift: number | null;
     part: number;
     wins: number;
     last: string;
@@ -126,6 +137,7 @@ export interface SupplierVariant {
     requisites: SupplierRequisite[];
     history: SupplierHistoryRow[];
     roleReason: string;
+    verified: SupplierVerificationDto | null;
 }
 
 /** Кеш полного справочника, чтобы не дёргать api при каждом открытии списка. */
@@ -210,6 +222,8 @@ function toVariant(item: SupplierVariantDto): SupplierVariant {
         isNew: item.novelty === "new",
         role: item.role,
         score: item.score,
+        scoreKind: item.scoreKind ?? (item.novelty === "new" ? "new" : "relative"),
+        lift: item.lift ?? null,
         part: item.part,
         wins: item.wins,
         last: item.last,
@@ -258,6 +272,7 @@ function toVariant(item: SupplierVariantDto): SupplierVariant {
             },
         ],
         roleReason: item.roleReason ?? "",
+        verified: item.verified ?? null,
         history: item.history.map((row) => ({
             subject: row.subject,
             nmck: formatMoney(row.nmck),

@@ -196,6 +196,15 @@ export default function MatchFormWidget({
             return;
         }
 
+        if (!matchService.isSelectableCategory(values.category.code)) {
+            setNotice({
+                tone: "bad",
+                text: "Категория слишком общая: выберите группу, например 32.50 или 17.12",
+            });
+
+            return;
+        }
+
         if (Number(values.nmck.replace(/\s/g, "")) <= 0) {
             setNotice({
                 tone: "bad",
@@ -392,7 +401,7 @@ export default function MatchFormWidget({
                     </div>
 
                     <p className={styles.hint}>
-                        Найдите по коду или названию, например «17.12» или «бумага».
+                        Выберите группу товаров по коду или названию, например «17.12 Бумага и картон» или «32.50».
                     </p>
                 </div>
 

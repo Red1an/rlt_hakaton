@@ -4,7 +4,7 @@ import psycopg
 
 RESULT_LIMIT = 50
 
-_catalog: list[tuple[str, str]] | None = None
+_catalog: list[tuple[str, str, int]] | None = None
 
 
 def query_stems(query: str) -> list[str]:
@@ -40,14 +40,24 @@ def code_prefixes(code: str) -> set[str]:
     return prefixes
 
 
-def catalog(conn: psycopg.Connection) -> list[tuple[str, str]]:
+GROUP_PATTERN = re.compile(r"^\d{2}\.\d{2}")
+
+
+def is_selectable(code: str) -> bool:
+    return bool(GROUP_PATTERN.match(code))
+
+
+def catalog(conn: psycopg.Connection) -> list[tuple[str, str, int]]:
     global _catalog
     if _catalog is None:
-        used = set()
-        for (code,) in conn.execute("SELECT DISTINCT okpd_code FROM lots WHERE okpd_code IS NOT NULL"):
-            used |= code_prefixes(code)
+        usage: dict[str, int] = {}
+        for code, count in conn.execute(
+            "SELECT okpd_code, count(DISTINCT lot_id) FROM lots WHERE okpd_code IS NOT NULL GROUP BY okpd_code"
+        ):
+            for prefix in code_prefixes(code):
+                usage[prefix] = usage.get(prefix, 0) + count
         rows = conn.execute("SELECT code, name FROM okpd WHERE name IS NOT NULL ORDER BY code").fetchall()
-        _catalog = [(code, name) for code, name in rows if code in used]
+        _catalog = [(code, name, usage[code]) for code, name in rows if code in usage and is_selectable(code)]
     return _catalog
 
 
@@ -55,15 +65,15 @@ def list_categories(conn: psycopg.Connection, term: str) -> list[dict]:
     term = term.strip().lower()
     entries = catalog(conn)
     if not term:
-        found = [entry for entry in entries if "." not in entry[0]]
+        found = sorted((entry for entry in entries if len(entry[0]) == 5), key=lambda entry: -entry[2])
     else:
-        by_code = [entry for entry in entries if entry[0].startswith(term)]
+        by_code = sorted((entry for entry in entries if entry[0].startswith(term)), key=lambda entry: (len(entry[0]), entry[0]))
         by_name = sorted(
             (entry for entry in entries if term in entry[1].lower() and not entry[0].startswith(term)),
-            key=lambda entry: len(entry[0]),
+            key=lambda entry: (len(entry[0]), -entry[2]),
         )
         found = by_code + by_name
-    return [{"code": code, "name": name} for code, name in found[:RESULT_LIMIT]]
+    return [{"code": code, "name": name} for code, name, _ in found[:RESULT_LIMIT]]
 
 
 def category_name(conn: psycopg.Connection, code: str) -> str | None:

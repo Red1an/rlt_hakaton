@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 
 import {
     batchExportUrl,
+    computeLot,
     deleteBatch,
     fetchBatchLots,
     fetchBatchStatus,
@@ -54,6 +55,7 @@ export default function BatchWidget({
     const [ batchName, setBatchName ] = useState("");
     const [ isUploading, setIsUploading ] = useState(false);
     const [ notice, setNotice ] = useState<Notice>(null);
+    const [ computingIds, setComputingIds ] = useState<number[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [ batchesVersion, setBatchesVersion ] = useState(0);
@@ -147,7 +149,7 @@ export default function BatchWidget({
         if (files.length === 0) {
             setNotice({
                 tone: "bad",
-                text: "Выберите файлы Извещения*.csv и ТРУ*.csv",
+                text: "Выберите CSV с извещениями и с товарами (ТРУ)",
             });
 
             return;
@@ -174,7 +176,8 @@ export default function BatchWidget({
             setJob(started.job);
             setNotice({
                 tone: "ok",
-                text: `Пакет «${ created }» загружен, считаем рекомендации по всем лотам`,
+                text: `Пакет «${ created }» загружен${ started.lots ? `: ${ started.lots } лотов` : "" }. `
+                    + "Подберите поставщиков для нужного лота или обработайте все сразу",
             });
         } catch (error) {
             setNotice({
@@ -186,16 +189,35 @@ export default function BatchWidget({
         }
     }
 
-    async function handleRecompute() {
+    async function handleCompute(onlyMissing: boolean) {
         setNotice(null);
 
         try {
-            setJob((await recomputeBatch(selectedBatch)).job);
+            setJob((await recomputeBatch(selectedBatch, onlyMissing)).job);
         } catch (error) {
             setNotice({
                 tone: "bad",
                 text: errorText(error, "Не удалось запустить пересчёт"),
             });
+        }
+    }
+
+    async function handleComputeLot(lotId: number) {
+        setComputingIds((ids) => [ ...ids, lotId ]);
+        setNotice(null);
+
+        try {
+            const computed = await computeLot(lotId);
+
+            setLots((current) => current.map((lot) => (lot.lotId === lotId ? computed : lot)));
+            onOpenLot(lotId);
+        } catch (error) {
+            setNotice({
+                tone: "bad",
+                text: errorText(error, "Не удалось подобрать поставщиков для лота"),
+            });
+        } finally {
+            setComputingIds((ids) => ids.filter((id) => id !== lotId));
         }
     }
 
@@ -226,6 +248,7 @@ export default function BatchWidget({
     const openLot = visibleLots.find((lot) => lot.lotId === openLotId) ?? null;
     const isRunning = job.status === "running";
     const computedCount = visibleLots.filter((lot) => lot.computed).length;
+    const missingCount = visibleLots.length - computedCount;
 
     return (
         <div className={styles.page}>
@@ -233,13 +256,13 @@ export default function BatchWidget({
                 <h1 className={styles.title}>Пакетный подбор</h1>
 
                 <p className={styles.lead}>
-                    Загрузите закупки в формате исходных данных — подберём поставщиков сразу по всем лотам
-                    и подготовим файл с результатами.
+                    Загрузите закупки в формате исходных данных: CSV с извещениями и с товарами, имена файлов
+                    любые. Затем подберите поставщиков для отдельного лота или обработайте весь пакет.
                 </p>
 
                 <form className={styles.upload} onSubmit={handleUpload}>
                     <label className={styles.field}>
-                        <span className={styles.label}>Файлы Извещения*.csv и ТРУ*.csv</span>
+                        <span className={styles.label}>CSV с извещениями и товарами</span>
 
                         <input
                             ref={ fileInputRef }
@@ -264,7 +287,7 @@ export default function BatchWidget({
                     </label>
 
                     <button className={styles.primary} type="submit" disabled={ isUploading }>
-                        { isUploading ? "Загружаем…" : "Загрузить и подобрать" }
+                        { isUploading ? "Загружаем…" : "Загрузить" }
                     </button>
                 </form>
 
@@ -308,14 +331,25 @@ export default function BatchWidget({
 
                         { selectedBatch !== "" && (
                             <div className={styles.actions}>
-                                <button
-                                    className={styles.secondary}
-                                    type="button"
-                                    disabled={ isRunning }
-                                    onClick={() => void handleRecompute()}
-                                >
-                                    Пересчитать
-                                </button>
+                                { missingCount > 0 ? (
+                                    <button
+                                        className={styles.primary}
+                                        type="button"
+                                        disabled={ isRunning }
+                                        onClick={() => void handleCompute(true)}
+                                    >
+                                        { computedCount > 0 ? `Обработать оставшиеся (${ missingCount })` : "Обработать все" }
+                                    </button>
+                                ) : (
+                                    <button
+                                        className={styles.secondary}
+                                        type="button"
+                                        disabled={ isRunning || visibleLots.length === 0 }
+                                        onClick={() => void handleCompute(false)}
+                                    >
+                                        Пересчитать все
+                                    </button>
+                                ) }
 
                                 <a
                                     className={ `${ styles.primary } ${ isRunning || computedCount === 0 ? styles.disabled : "" }` }
@@ -391,26 +425,40 @@ export default function BatchWidget({
                                                         { lot.top.map((item) => (
                                                             <li key={ item.inn }>
                                                                 <span className={styles.topName}>{ item.name }</span>
-                                                                <span className={styles.topScore}>{ item.score }</span>
+                                                                <span className={styles.topScore}>
+                                                                    { item.scoreKind === "probability" ? `${ item.score }%` : item.score }
+                                                                </span>
                                                             </li>
                                                         )) }
                                                     </ol>
                                                 ) : (
                                                     <span className={styles.muted}>
-                                                        { isRunning ? "считаем…" : "не рассчитано" }
+                                                        { isRunning || computingIds.includes(lot.lotId)
+                                                            ? "считаем…"
+                                                            : "ещё не подобраны" }
                                                     </span>
                                                 ) }
                                             </td>
 
                                             <td>
-                                                <button
-                                                    className={styles.secondary}
-                                                    type="button"
-                                                    disabled={ !lot.computed }
-                                                    onClick={() => onOpenLot(lot.lotId)}
-                                                >
-                                                    Открыть
-                                                </button>
+                                                { lot.computed ? (
+                                                    <button
+                                                        className={styles.secondary}
+                                                        type="button"
+                                                        onClick={() => onOpenLot(lot.lotId)}
+                                                    >
+                                                        Открыть
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        className={styles.primary}
+                                                        type="button"
+                                                        disabled={ isRunning || computingIds.includes(lot.lotId) }
+                                                        onClick={() => void handleComputeLot(lot.lotId)}
+                                                    >
+                                                        { computingIds.includes(lot.lotId) ? "Подбираем…" : "Подобрать" }
+                                                    </button>
+                                                ) }
                                             </td>
                                         </tr>
                                     )) }

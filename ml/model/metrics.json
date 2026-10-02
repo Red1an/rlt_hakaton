@@ -7,6 +7,9 @@
     "comp_wins",
     "comp_win_share",
     "direct_cnt",
+    "direct_share",
+    "spec_share",
+    "typicality",
     "days_since_last",
     "platform_share",
     "price_fit",
@@ -27,25 +30,112 @@
   ],
   "results": {
     "Топ по победам": {
-      "winner_in_top": 0.3079914775609591,
-      "participants_found": 0.2966770291573465,
-      "winner_mrr": 0.15511321474826448,
-      "winner_median_position": 15.0,
-      "winner_in_candidates": 0.7311711589840711
+      "winner_in_top": 0.31375481362395785,
+      "participants_found": 0.2754277623927139,
+      "winner_mrr": 0.15213667648983775,
+      "winner_median_position": 14.0,
+      "winner_in_candidates": 0.7133136426515123
     },
     "Формула": {
-      "winner_in_top": 0.3105279177516994,
-      "participants_found": 0.2836684388759389,
-      "winner_mrr": 0.16109024602726738,
-      "winner_median_position": 15.0,
-      "winner_in_candidates": 0.7311711589840711
+      "winner_in_top": 0.26178636856469883,
+      "participants_found": 0.1794766767093549,
+      "winner_mrr": 0.1243924302694323,
+      "winner_median_position": 17.0,
+      "winner_in_candidates": 0.7133136426515123
     },
     "LightGBM": {
-      "winner_in_top": 0.5706652237140248,
-      "participants_found": 0.5455391373793619,
-      "winner_mrr": 0.36767540109017577,
-      "winner_median_position": 2.0,
-      "winner_in_candidates": 0.7311711589840711
+      "winner_in_top": 0.5350506598870901,
+      "participants_found": 0.46886169617018053,
+      "winner_mrr": 0.3085119011539665,
+      "winner_median_position": 4.0,
+      "winner_in_candidates": 0.7133136426515123
     }
+  },
+  "calibration": {
+    "features": [
+      "raw",
+      "gap",
+      "rank"
+    ],
+    "maxProbability": 0.7,
+    "baseRate": 0.0307,
+    "target": "participated",
+    "period": [
+      "2025-06-30",
+      "2025-09-30"
+    ],
+    "lots": 8523,
+    "top_predicted": 0.404,
+    "top_actual": 0.395,
+    "reliability": [
+      {
+        "range": "-0%–10%",
+        "predicted": 0.015,
+        "actual": 0.014,
+        "rows": 661660.0
+      },
+      {
+        "range": "10%–20%",
+        "predicted": 0.141,
+        "actual": 0.138,
+        "rows": 33593.0
+      },
+      {
+        "range": "20%–30%",
+        "predicted": 0.242,
+        "actual": 0.231,
+        "rows": 13825.0
+      },
+      {
+        "range": "30%–40%",
+        "predicted": 0.346,
+        "actual": 0.339,
+        "rows": 6478.0
+      },
+      {
+        "range": "40%–50%",
+        "predicted": 0.443,
+        "actual": 0.429,
+        "rows": 4540.0
+      },
+      {
+        "range": "50%–60%",
+        "predicted": 0.55,
+        "actual": 0.529,
+        "rows": 1286.0
+      }
+    ],
+    "top_reliability": [
+      {
+        "range": "10%–20%",
+        "predicted": 0.152,
+        "actual": 0.071,
+        "rows": 14.0
+      },
+      {
+        "range": "20%–30%",
+        "predicted": 0.267,
+        "actual": 0.245,
+        "rows": 1429.0
+      },
+      {
+        "range": "30%–40%",
+        "predicted": 0.331,
+        "actual": 0.349,
+        "rows": 1933.0
+      },
+      {
+        "range": "40%–50%",
+        "predicted": 0.444,
+        "actual": 0.431,
+        "rows": 3861.0
+      },
+      {
+        "range": "50%–60%",
+        "predicted": 0.55,
+        "actual": 0.529,
+        "rows": 1286.0
+      }
+    ]
   }
 }
