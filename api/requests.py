@@ -17,3 +17,6 @@ class GetSuppliersRequest(BaseModel):
 
 class FindOKPDRequest(BaseModel):
     _str: str | None
+
+class GraphsRequest(BaseModel):
+    inn: str
