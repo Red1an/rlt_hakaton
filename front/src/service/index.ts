@@ -51,3 +51,14 @@ export type {
     BatchJobStatus,
     BatchLot,
 } from "./batchService";
+
+export {
+    fetchEnrichment,
+    startEnrichment,
+} from "../api/enrichment";
+
+export type {
+    EnrichmentJobDto as EnrichmentJob,
+    EnrichmentResultDto as EnrichmentResult,
+    EnrichmentStateDto as EnrichmentState,
+} from "../api/types";

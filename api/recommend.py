@@ -3,13 +3,16 @@ import math
 from datetime import date, timedelta
 
 import psycopg
+from psycopg.rows import dict_row
 
 from . import model
+from worker.dadata import okved_section
 from worker.discover import CACHE_DIR
 
 LOCAL_REGIONS = {"78": "Из Санкт-Петербурга", "47": "Из Ленинградской области"}
 REGION_NAMES = {"78": "Санкт-Петербург", "47": "Ленинградская область"}
 ROLE_CODES = {"manufacturer": "man", "distributor": "dist", "supplier": "sup"}
+STATUS_FLAGS = {"LIQUIDATING": "Ликвидируется", "REORGANIZING": "Реорганизация"}
 NEW_ROLE_SCORES = {"man": 60, "dist": 55, "sup": 50}
 PLATFORM_LABELS = {True: "Электронный магазин", False: "АИС ГЗ"}
 TOP_BY_WINS = 50
@@ -40,12 +43,13 @@ HISTORY_SQL = """
         count(*) FILTER (WHERE a.is_eshop_or_aisgz)                     AS eshop_bids,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY a.start_price)      AS typical_price,
         count(*) FILTER (WHERE a.customer_inn = %(customer)s)           AS customer_group_bids,
-        s.name, s.kpp, s.role, s.role_reason
+        s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date
     FROM bids b
     JOIN similar_lots sl ON sl.lot_id = b.lot_id
     JOIN announcements a ON a.lot_id = b.lot_id
     JOIN suppliers s ON s.inn = b.supplier_inn
-    GROUP BY b.supplier_inn, s.name, s.kpp, s.role, s.role_reason
+    WHERE (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
+    GROUP BY b.supplier_inn, s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date
 """
 
 CUSTOMER_BIDS_SQL = """
@@ -57,9 +61,10 @@ CUSTOMER_BIDS_SQL = """
 """
 
 NEW_SQL = """
-    SELECT inn, kpp, name, role, role_reason, site, contacts
-    FROM suppliers
+    SELECT inn, kpp, name, role, role_reason, site, contacts, status, ogrn, okved_main, region_code, reg_date
+    FROM suppliers s
     WHERE source = 'web'
+      AND (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
       AND EXISTS (
           SELECT 1 FROM unnest(okpds) code, unnest(%(codes)s::text[]) wanted
           WHERE code LIKE wanted || '%%' OR wanted LIKE code || '%%'
@@ -148,14 +153,21 @@ def egrul_record(inn: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) or {}
 
 
-def requisites_for(inn: str, kpp: str | None, contacts: dict | None = None) -> dict:
-    record = egrul_record(inn)
-    region = region_code(inn, kpp)
+def okved_text(okved: str | None) -> str:
+    if not okved:
+        return EMPTY
+    section = okved_section(okved)
+    return f"{okved} — {section}" if section else okved
+
+
+def requisites_for(row: dict, contacts: dict | None = None) -> dict:
+    record = egrul_record(row["inn"])
+    region = row.get("region_code") or region_code(row["inn"], row["kpp"])
     contacts = contacts or {}
     return {
-        "kpp": valid_kpp(kpp) or valid_kpp(record.get("kpp")) or EMPTY,
-        "ogrn": record.get("ogrn") or EMPTY,
-        "okved": EMPTY,
+        "kpp": valid_kpp(row["kpp"]) or valid_kpp(record.get("kpp")) or EMPTY,
+        "ogrn": row.get("ogrn") or record.get("ogrn") or EMPTY,
+        "okved": okved_text(row.get("okved_main")),
         "region": REGION_NAMES.get(region) or record.get("region_name") or f"Регион {region}",
         "phone": ", ".join(contacts.get("phones", [])) or EMPTY,
         "email": ", ".join(contacts.get("emails", [])) or EMPTY,
@@ -174,15 +186,26 @@ def money(value: float) -> str:
     return f"{round(value / 1000)} тыс. ₽"
 
 
-def flags_for(inn: str, kpp: str | None, is_msp: bool) -> list[str]:
+def flags_for(row: dict, is_msp: bool) -> list[str]:
     flags = []
     if is_msp:
         flags.append("МСП")
-    if len(inn) == 12:
+    if len(row["inn"]) == 12:
         flags.append("ИП")
-    if valid_kpp(kpp) and kpp[4:6] == "43":
+    if valid_kpp(row["kpp"]) and row["kpp"][4:6] == "43":
         flags.append("Филиал")
+    if row.get("status") in STATUS_FLAGS:
+        flags.append(STATUS_FLAGS[row["status"]])
     return flags
+
+
+def company_age(reg_date: date | None, today: date) -> str | None:
+    if reg_date is None:
+        return None
+    years = (today - reg_date).days // 365
+    if years < 1:
+        return "Компания зарегистрирована меньше года назад"
+    return f"Компании {years} {plural(years, 'год', 'года', 'лет')}"
 
 
 def group_text(group: str, positive: bool, row: dict, lot: dict, values: dict[str, float]) -> str | None:
@@ -287,7 +310,7 @@ def history_item(row: dict, lot: dict, score: int, impacts: dict[str, float] | N
         "id": row["inn"],
         "name": row["name"] or f"Компания ИНН {row['inn']}",
         "inn": row["inn"],
-        "flags": flags_for(row["inn"], row["kpp"], row["is_msp"]),
+        "flags": flags_for(row, row["is_msp"]),
         "novelty": "existing",
         "role": ROLE_CODES.get(row["role"], "sup"),
         "score": score,
@@ -298,26 +321,30 @@ def history_item(row: dict, lot: dict, score: int, impacts: dict[str, float] | N
         "why": why,
         "factors": factors,
         "site": "",
-        "requisites": requisites_for(row["inn"], row["kpp"]),
+        "requisites": requisites_for(row),
+        "roleReason": row["role_reason"],
+        "status": row.get("status"),
         "history": [],
         "isMsp": row["is_msp"],
         "isContender": is_contender(row),
     }
 
 
-def new_item(row: tuple) -> dict:
-    inn, kpp, name, role, role_reason, site, contacts = row
-    role_code = ROLE_CODES.get(role, "sup")
-    region = region_code(inn, kpp)
+def new_item(row: dict) -> dict:
+    role_code = ROLE_CODES.get(row["role"], "sup")
+    region = row["region_code"] or region_code(row["inn"], row["kpp"])
     why = [["✦", "Нет в истории госзакупок, найден в открытых источниках"]]
-    if role_reason:
-        why.append(["⚙", role_reason])
-    why.append(["✓", f"Действующая компания по ЕГРЮЛ, {REGION_NAMES.get(region, f'регион {region}')}"])
+    if row["role_reason"]:
+        why.append(["⚙", row["role_reason"]])
+    age = company_age(row["reg_date"], date.today())
+    status_text = "Действующая компания" if row["status"] in (None, "ACTIVE") else STATUS_FLAGS.get(row["status"], row["status"])
+    why.append(["✓", f"{status_text}, {REGION_NAMES.get(region, f'регион {region}')}" + (f". {age}" if age else "")])
+    contacts = json.loads(row["contacts"]) if row["contacts"] else None
     return {
-        "id": inn,
-        "name": name or f"Компания ИНН {inn}",
-        "inn": inn,
-        "flags": flags_for(inn, kpp, False),
+        "id": row["inn"],
+        "name": row["name"] or f"Компания ИНН {row['inn']}",
+        "inn": row["inn"],
+        "flags": flags_for(row, False),
         "novelty": "new",
         "role": role_code,
         "score": NEW_ROLE_SCORES[role_code],
@@ -327,8 +354,10 @@ def new_item(row: tuple) -> dict:
         "last": "—",
         "why": why,
         "factors": [],
-        "site": site_without_protocol(site),
-        "requisites": requisites_for(inn, kpp, json.loads(contacts) if contacts else None),
+        "site": site_without_protocol(row["site"]),
+        "requisites": requisites_for(row, contacts),
+        "roleReason": row["role_reason"],
+        "status": row["status"],
         "history": [],
         "isMsp": None,
     }
@@ -338,31 +367,20 @@ def load_rows(conn: psycopg.Connection, params: dict, lot_date: date) -> list[di
     profiles, _ = model.supplier_profiles()
     customer_bids = dict(conn.execute(CUSTOMER_BIDS_SQL, params)) if params["customer"] else {}
     rows = []
-    for (
-        inn, part, wins, comp_part, comp_wins, direct_cnt, last_date, eshop_bids, typical_price,
-        customer_group_bids, name, kpp, role, role_reason,
-    ) in conn.execute(HISTORY_SQL, params):
-        rows.append({
-            "inn": inn,
-            "part": part,
-            "wins": wins,
-            "comp_part": comp_part,
-            "comp_wins": comp_wins,
-            "direct_cnt": direct_cnt,
-            "last_date": last_date,
-            "days": (lot_date - last_date).days,
-            "eshop_bids": eshop_bids,
-            "typical_price": float(typical_price),
-            "customer_group_bids": customer_group_bids,
-            "customer_bids": customer_bids.get(inn, 0),
-            "name": name,
-            "kpp": kpp,
-            "role": role,
-            "role_reason": role_reason,
-            "region": region_code(inn, kpp),
-            "is_local": region_code(inn, kpp) in LOCAL_REGIONS,
-            "is_msp": profiles.get(inn, (0, 0, False))[2],
-        })
+    with conn.cursor(row_factory=dict_row) as cur:
+        for record in cur.execute(HISTORY_SQL, params):
+            inn = record.pop("supplier_inn")
+            region = record["region_code"] or region_code(inn, record["kpp"])
+            rows.append({
+                **record,
+                "inn": inn,
+                "days": (lot_date - record["last_date"]).days,
+                "typical_price": float(record["typical_price"]),
+                "customer_bids": customer_bids.get(inn, 0),
+                "region": region,
+                "is_local": region in LOCAL_REGIONS,
+                "is_msp": profiles.get(inn, (0, 0, False))[2],
+            })
     return rows
 
 
@@ -426,7 +444,8 @@ def recommend(
             "won": is_winner,
         })
 
-    new = sorted((new_item(row) for row in conn.execute(NEW_SQL, params)), key=lambda item: item["score"], reverse=True)
+    with conn.cursor(row_factory=dict_row) as cur:
+        new = sorted((new_item(row) for row in cur.execute(NEW_SQL, params)), key=lambda item: item["score"], reverse=True)
     return {"okpd": okpd, "items": history + new, "model": model.model_available()}
 
 

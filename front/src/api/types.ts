@@ -89,6 +89,7 @@ export interface SupplierVariantDto {
     requisites: SupplierRequisitesDto;
     /** История участия без даты; у новых поставщиков пуста. */
     history: VariantHistoryRowDto[];
+    roleReason?: string | null;
 }
 
 /** Ответ справочника вариантов. */
@@ -145,4 +146,34 @@ export interface BatchLotsResponseDto {
 export interface BatchJobResponseDto {
     name: string;
     job: BatchJobDto;
+}
+
+export interface EnrichmentResultDto {
+    inn: string;
+    name: string | null;
+    status: string | null;
+    role?: "manufacturer" | "distributor" | "supplier" | null;
+    roleReason?: string | null;
+    okved?: string | null;
+    regionCode?: string | null;
+    regDate?: string | null;
+    message?: string;
+}
+
+export interface EnrichmentJobDto {
+    status: "idle" | "running" | "done" | "stopped" | "error";
+    okpd?: string | null;
+    total?: number;
+    done?: number;
+    closed?: number;
+    notFound?: number;
+    errors?: number;
+    message?: string;
+    results?: EnrichmentResultDto[];
+}
+
+export interface EnrichmentStateDto {
+    job: EnrichmentJobDto;
+    maxLimit: number;
+    suppliers: { total: number; enriched: number; closed: number; warning: number };
 }

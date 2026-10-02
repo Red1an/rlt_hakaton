@@ -125,6 +125,7 @@ export interface SupplierVariant {
     email: string;
     requisites: SupplierRequisite[];
     history: SupplierHistoryRow[];
+    roleReason: string;
 }
 
 /** Кеш полного справочника, чтобы не дёргать api при каждом открытии списка. */
@@ -256,6 +257,7 @@ function toVariant(item: SupplierVariantDto): SupplierVariant {
                 mono: true,
             },
         ],
+        roleReason: item.roleReason ?? "",
         history: item.history.map((row) => ({
             subject: row.subject,
             nmck: formatMoney(row.nmck),

@@ -18,6 +18,7 @@ from .batches import (
     upload_batch,
 )
 from .categories import category_name, list_categories
+from .enrichment import DEFAULT_LIMIT, enrichment_state, start_enrichment
 from .db import connect
 from .jobs import enrich_names
 from .recommend import fill_names, recommend
@@ -26,6 +27,11 @@ router = APIRouter(prefix="/match")
 
 _results: dict[str, list[dict]] = {}
 _last_request_id: str | None = None
+
+
+class EnrichmentRequest(BaseModel):
+    okpd: str | None = None
+    limit: int = DEFAULT_LIMIT
 
 
 class SearchRequest(BaseModel):
@@ -135,3 +141,14 @@ def variants_of_lot(lot_id: int) -> dict:
     if result is None:
         raise HTTPException(404, "Рекомендации для этого лота ещё не рассчитаны")
     return result
+
+
+@router.post("/enrichment")
+def run_enrichment(request: EnrichmentRequest) -> dict:
+    okpd = (request.okpd or "").strip() or None
+    return start_enrichment(okpd, request.limit)
+
+
+@router.get("/enrichment")
+def enrichment_status() -> dict:
+    return enrichment_state()

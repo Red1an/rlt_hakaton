@@ -9,6 +9,7 @@ import type {
     BatchLot, MatchFormState, MatchFormValues, ProcurementLot, ShortListEntry,
 } from "@/service";
 import BatchWidget from "@/widgets/BatchWidget/BatchWidget";
+import EnrichmentWidget from "@/widgets/EnrichmentWidget/EnrichmentWidget";
 import MatchFormWidget from "@/widgets/MatchFormWidget/MatchFormWidget";
 import ShortListWidget from "@/widgets/ShortListWidget/ShortListWidget";
 import SidebarWidget from "@/widgets/SidebarWidget/SidebarWidget";
@@ -197,6 +198,8 @@ export default function MainPage() {
                         shortListIds={ batchShortListIds }
                         onToggleShortList={ toggleBatchShortList }
                     />
+                ) : screen === "enrichment" ? (
+                    <EnrichmentWidget />
                 ) : screen === "short" ? (
                     <ShortListWidget
                         lots={ lots }

@@ -47,7 +47,7 @@ function VariantCard({
 
                     <span className={styles.sep}>·</span>
 
-                    <span className={styles.roleBadge}>
+                    <span className={styles.roleBadge} title={ variant.roleReason || undefined }>
                         <span
                             className={ `${ styles.roleDot } ${ styles[`roleDot_${ variant.role }`] }` }
                         />
@@ -167,7 +167,7 @@ function VariantDrawer({
                         </div>
 
                         <div className={styles.drawerMeta}>
-                            <span className={styles.roleBadge}>
+                            <span className={styles.roleBadge} title={ variant.roleReason || undefined }>
                                 <span
                                     className={ `${ styles.roleDot } ${
                                         styles[`roleDot_${ variant.role }`]
