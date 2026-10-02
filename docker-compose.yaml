@@ -14,6 +14,8 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ".database/dumps/:/docker-entrypoint-initdb.d:ro"
     ports:
       - ${POSTGRES_PORT}:5432
 
