@@ -11,7 +11,6 @@ class SiteAdapter(ABC):
     def supplier_urls(
         self,
         fetcher: Fetcher,
-        query: str,
         limit: int,
     ) -> list[str]:
         raise NotImplementedError
@@ -54,15 +53,9 @@ class ZakupkiAdapter(SiteAdapter):
     def supplier_urls(
         self,
         fetcher: Fetcher,
-        query: str,
         limit: int,
     ) -> list[str]:
-        url = self.SEARCH_URL + "?" + urlencode(
-            {
-                "searchString": query,
-                "morphology": "on",
-            }
-        )
+        url = self.SEARCH_URL
 
         html = fetcher.get(url)
         if not html:

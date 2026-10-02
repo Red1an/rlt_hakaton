@@ -1,7 +1,9 @@
 import hashlib
 import re
 import time
+import json
 import httpx
+import psycopg
 from pathlib import Path
 from bs4 import BeautifulSoup
 
@@ -123,6 +125,43 @@ def detect_role(text: str) -> tuple[str, str]:
             return "distributor", f"найдено: «{keyword}»"
 
     return "supplier", "признаки роли не найдены"
+
+def save(
+    conn: psycopg.Connection,
+    companies: list[dict],
+    okpd: str | None,
+) -> None:
+    with conn.cursor() as cur:
+        for company in companies:
+            cur.execute(
+                """
+                INSERT INTO suppliers (
+                    inn, kpp, name, sum_price, is_smp,
+                    okpds, source, site, role,
+                    role_reason, contacts
+                )
+                VALUES (
+                    %s, %s, %s, 0, false, %s,
+                    'web', %s, %s, %s, %s
+                )
+                ON CONFLICT (inn) DO NOTHING
+                """,
+                (
+                    company["inn"],
+                    company["kpp"],
+                    company["name"],
+                    [okpd] if okpd else [],
+                    company["site"],
+                    company["role"],
+                    company["role_reason"],
+                    json.dumps(
+                        company["contacts"],
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
+
+    conn.commit()
 
 
 class Fetcher:

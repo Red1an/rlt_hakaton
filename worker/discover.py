@@ -3,7 +3,6 @@ from .adapters import *
 from .egrul import *
 
 def discover(
-    query: str,
     limit: int,
     known_inns: set[str],
     refresh: bool = False,
@@ -21,7 +20,6 @@ def discover(
         for adapter in ADAPTERS.values():
             urls = adapter.supplier_urls(
                 fetcher,
-                query,
                 limit,
             )
 

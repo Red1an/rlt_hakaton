@@ -24,6 +24,8 @@ from .requests import (
 )
 from .routes import router as match_router
 
+from worker import discover
+
 
 load_dotenv()
 
@@ -40,8 +42,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.include_router(match_router)
 
 
-@app.post("/enrich")
+@app.get("/enrich")
 async def enrich():
+
+    return discover(100, {})
     # worker run: search for new suppliers + search suppliers data + upd db
 
     # ml run: upd suppliers
