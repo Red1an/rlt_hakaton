@@ -148,6 +148,49 @@ export interface BatchJobResponseDto {
     job: BatchJobDto;
 }
 
+/** Месяц активности поставщика в формате YYYY-MM. */
+export interface ActivityPointDto {
+    month: string;
+    wins: number;
+    engages: number;
+}
+
+/**
+ * График активности. Бэкенд при ошибке отдаёт HTTP 200 с `status: 400`,
+ * поэтому поле приходится проверять на клиенте.
+ */
+export interface ActivityResponseDto {
+    status: number;
+    message?: string;
+    inn: string;
+    points: ActivityPointDto[];
+    wins: number;
+    engages: number;
+}
+
+/** Доля участий поставщика в одной категории ОКПД2. */
+export interface OkpdItemDto {
+    /** Код ОКПД2; может отсутствовать, если категория не распознана. */
+    code: string | null;
+    /** Название категории; `null`, если кода нет в справочнике. */
+    name: string | null;
+    wins: number;
+    engages: number;
+    /** Доля категории во всех участиях поставщика, %. */
+    percent: number;
+    /** Доля побед категории во всех победах поставщика, %. */
+    win_percent: number;
+}
+
+export interface OkpdResponseDto {
+    status: number;
+    message?: string;
+    inn: string;
+    items: OkpdItemDto[];
+    wins: number;
+    engages: number;
+}
+
 export interface EnrichmentResultDto {
     inn: string;
     name: string | null;

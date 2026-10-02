@@ -1,0 +1,177 @@
+/* Панели графиков карточки контрагента: «Активность» и «Топ категорий ОКПД2».
+   Геометрия полос задаётся из разметки (высота/ширина в процентах), здесь
+   только каркас и цвета — как в остальных полосах интерфейса. */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px 20px;
+    border: 1px solid $line;
+    border-radius: $radius-lg;
+    background: $surface;
+}
+
+.panelHead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+
+.panelTitle {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: $ink-2;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.legendValue {
+    font-family: $font-mono;
+    font-weight: 500;
+}
+
+.swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.swatchPart {
+    background: $bar-part;
+}
+
+.swatchWin {
+    background: $accent;
+}
+
+.hint {
+    margin: 0;
+    color: $ink-3;
+    font-size: 13px;
+}
+
+/* Пустое состояние остаётся на месте панели, чтобы вёрстка не прыгала. */
+.chartEmpty {
+    margin: 0;
+    padding: 22px;
+    border-radius: 9px;
+    background: $surface-2;
+    color: $ink-2;
+    font-size: 13.5px;
+    text-align: center;
+}
+
+/* ── Активность: парные полосы участия и побед по месяцам ────────────────── */
+
+.chart {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.plot {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 120px;
+    border-bottom: 1px solid $line;
+}
+
+.column {
+    display: flex;
+    align-items: flex-end;
+    flex: 1;
+    gap: 1px;
+    height: 100%;
+    min-width: 0;
+}
+
+.barPart,
+.barWin {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    transition: height 0.25s ease;
+}
+
+.barPart {
+    background: $bar-part;
+}
+
+.barWin {
+    background: $accent;
+}
+
+.axis {
+    display: flex;
+    gap: 4px;
+}
+
+.axisLabel {
+    flex: 1;
+    color: $ink-3;
+    font-size: 10.5px;
+    white-space: nowrap;
+}
+
+/* ── Топ категорий: код, название, доля и полоса под ними ────────────────── */
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12.5px;
+}
+
+.rowHead {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.rowCode {
+    color: $ink-3;
+    font-family: $font-mono;
+    white-space: nowrap;
+}
+
+.rowName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rowPercent {
+    font-family: $font-mono;
+    white-space: nowrap;
+}
+
+.track {
+    height: 8px;
+    border-radius: 3px;
+    background: $surface-3;
+    overflow: hidden;
+}
+
+.fill {
+    height: 100%;
+    border-radius: 3px;
+    background: $accent;
+    transition: width 0.25s ease;
+}

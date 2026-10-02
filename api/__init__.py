@@ -1,1 +1,1 @@
-from .requests import GetSuppliersRequest, FindOKPDRequest, GraphsRequest
+from .requests import GetSuppliersRequest, FindOKPDRequest

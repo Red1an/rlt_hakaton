@@ -8,6 +8,9 @@ import { plural } from "@/service/format";
 import type {
     SupplierRole, SupplierVariant,
 } from "@/service/matchService";
+import {
+    ActivityPanel, OkpdPanel,
+} from "@/widgets/SupplierGraphsWidget/SupplierGraphsWidget";
 
 import styles from "./VariantsWidget.module.scss";
 
@@ -229,6 +232,11 @@ function VariantDrawer({
                             )) }
                         </div>
                     </div>
+
+                    {/* У новых поставщиков закупочной истории нет — графики покажут пустое состояние. */}
+                    <ActivityPanel inn={ variant.isNew ? null : variant.inn } />
+
+                    <OkpdPanel inn={ variant.isNew ? null : variant.inn } />
 
                     <div className={styles.panel}>
                         <span className={styles.panelTitle}>История участия</span>
@@ -462,6 +470,7 @@ export default function VariantsWidget({
 
             { openCard && (
                 <VariantDrawer
+                    key={ openCard.id }
                     variant={ openCard }
                     inShortList={ shortListIds.includes(openCard.id) }
                     onToggleShortList={() => onToggleShortList(openCard.id)}

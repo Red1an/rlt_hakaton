@@ -32,6 +32,20 @@ export type {
     SupplierVariant,
 } from "./matchService";
 export {
+    ACTIVITY_MONTHS,
+    OKPD_TOP,
+    fetchActivityCard,
+    fetchOkpdCard,
+} from "./graphsService";
+
+export type {
+    ActivityCard,
+    ActivityMonth,
+    OkpdCard,
+    OkpdRow,
+} from "./graphsService";
+
+export {
     BATCH_EXPORT_TOP,
     batchExportUrl,
     deleteBatch,

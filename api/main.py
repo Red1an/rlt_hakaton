@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from typing import Annotated
+
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -7,7 +9,8 @@ from sqlalchemy import (
     or_,
     and_,
     func,
-    distinct
+    distinct,
+    text
 )
 from database import (
     database,
@@ -19,8 +22,7 @@ from database import (
 )
 from .requests import (
     GetSuppliersRequest,
-    FindOKPDRequest,
-    GraphsRequest
+    FindOKPDRequest
 )
 from .routes import router as match_router
 
@@ -122,18 +124,24 @@ async def enrich():
 
 
 @app.get("/graphs/activity")
-async def graphs_activity(request: GraphsRequest):
+async def graphs_activity(inn: str):
+    month = func.date_trunc("month", AnnouncementModel.publish_date)
+
     stmt = (
         select(
-            AnnouncementModel.publish_date.label("date"),
+            month.label("month"),
             func.count().label("engages"),
             func.count().filter(BidModel.is_winner).label("wins"),
         )
         .select_from(BidModel)
         .join(AnnouncementModel, AnnouncementModel.lot_id == BidModel.lot_id)
-        .where(BidModel.supplier_inn == request.inn)
-        .group_by(AnnouncementModel.publish_date)
-        .order_by(AnnouncementModel.publish_date)
+        .where(
+            BidModel.supplier_inn == inn,
+            AnnouncementModel.publish_date
+            >= func.date_trunc("month", func.now()) - text("interval '24 months'"),
+        )
+        .group_by(month)
+        .order_by(month)
     )
 
     try:
@@ -147,10 +155,10 @@ async def graphs_activity(request: GraphsRequest):
 
     return {
         "status": 200,
-        "inn": request.inn,
+        "inn": inn,
         "points": [
             {
-                "date": row.date.isoformat(),
+                "month": row.month.strftime("%Y-%m"),
                 "wins": row.wins,
                 "engages": row.engages,
             }
@@ -162,8 +170,20 @@ async def graphs_activity(request: GraphsRequest):
 
 
 @app.get("/graphs/okpd")
-async def graphs_okpd(request: GraphsRequest):
-    stmt = (
+async def graphs_okpd(inn: str, top: Annotated[int, Query(ge=1, le=50)] = 8):
+    # Суммы считаем по всей истории поставщика, а не по обрезанному списку:
+    # иначе проценты станут долями от топ-N и верхняя полоса всегда 100%.
+    totals = (
+        select(
+            func.count(distinct(BidModel.lot_id)).label("total_engages"),
+            func.count(distinct(BidModel.lot_id)).filter(BidModel.is_winner).label("total_wins"),
+        )
+        .select_from(BidModel)
+        .where(BidModel.supplier_inn == inn)
+        .subquery()
+    )
+
+    grouped = (
         select(
             LotModel.okpd_code.label("code"),
             OKPDModel.name.label("name"),
@@ -173,9 +193,20 @@ async def graphs_okpd(request: GraphsRequest):
         .select_from(BidModel)
         .join(LotModel, LotModel.lot_id == BidModel.lot_id)
         .outerjoin(OKPDModel, OKPDModel.code == LotModel.okpd_code)
-        .where(BidModel.supplier_inn == request.inn)
+        .where(BidModel.supplier_inn == inn)
         .group_by(LotModel.okpd_code, OKPDModel.name)
         .order_by(func.count(distinct(BidModel.lot_id)).desc())
+    )
+
+    limited = grouped.limit(top).subquery()
+
+    stmt = select(
+        limited.c.code,
+        limited.c.name,
+        limited.c.engages,
+        limited.c.wins,
+        totals.c.total_engages,
+        totals.c.total_wins,
     )
 
     try:
@@ -187,12 +218,12 @@ async def graphs_okpd(request: GraphsRequest):
             "message": f"{e}",
         }
 
-    total_engages = sum(row.engages for row in rows)
-    total_wins = sum(row.wins for row in rows)
+    total_engages = rows[0].total_engages if rows else 0
+    total_wins = rows[0].total_wins if rows else 0
 
     return {
         "status": 200,
-        "inn": request.inn,
+        "inn": inn,
         "items": [
             {
                 "code": row.code,
