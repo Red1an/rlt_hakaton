@@ -11,10 +11,9 @@ RUN pip install --no-cache-dir --upgrade -r req.txt
 
 ENV PYTHONPATH=/app:/database
 
-COPY ./api .
+COPY ./api ./api
 COPY ./database ./database
-COPY ./search ./search
 COPY ./worker ./worker
 COPY ./ml/model ./ml/model
 
-CMD ["fastapi", "run", "main.py", "--port", "80"]
+CMD ["fastapi", "run", "api/main.py", "--port", "80"]

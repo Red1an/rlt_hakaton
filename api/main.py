@@ -9,13 +9,14 @@ from sqlalchemy import (
 )
 from database import (
     database,
-    SuppliersModel
+    SuppliersModel,
+    OKPDModel
 )
-from requests import (
+from .requests import (
     GetSuppliersRequest,
     FindOKPDRequest
 )
-from search.routes import router as match_router
+from .routes import router as match_router
 
 
 load_dotenv()

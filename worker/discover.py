@@ -13,8 +13,8 @@ import psycopg
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
-from search.categories import detect_okpd
-from search.db import connect
+from api.categories import detect_okpd
+from api.db import connect
 
 WORKER_DIR = Path(__file__).resolve().parent
 CACHE_DIR = WORKER_DIR / ".cache"

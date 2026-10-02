@@ -6,7 +6,7 @@ import pandas as pd
 from ml.data import CACHE_DIR, load_all
 from ml.features import FEATURES, build_examples
 from ml.train import TEST_CUTOFF, TEST_UNTIL, TRAIN_CUTOFF, TRAIN_UNTIL, fit_ranker
-from search.db import connect
+from api.db import connect
 
 EVAL_MODEL_PATH = CACHE_DIR / "eval_model.txt"
 SHOWN = 5

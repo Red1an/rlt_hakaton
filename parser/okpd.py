@@ -20,7 +20,7 @@ if __name__ == "__main__":
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from search.db import connect
+    from api.db import connect
 
     with connect() as connection:
         print(f"Справочник ОКПД2: {load_classifier(connection)} кодов")

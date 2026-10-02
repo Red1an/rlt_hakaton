@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from search.db import connect
+from api.db import connect
 
 CACHE_DIR = Path(__file__).resolve().parent / ".cache"
 
