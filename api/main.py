@@ -46,66 +46,66 @@ async def enrich():
         "status": 200
     }
 
-@app.get("/get_suppliers")
-async def get_suppliers(request: GetSuppliersRequest):
-    limit: int = 10
-    offset: int = (request.page - 1) * limit
-    try:
-        async with database.session() as session:
-            stmt = select(
-                SuppliersModel
-            ).limit(
-                limit
-            ).offset(
-                offset
-            ).where(
-                and_(
-                    SuppliersModel.okpds.contains([request.okpd]),
-                    SuppliersModel.is_smp == request.is_smp,
-                    # SuppliersModel.source == request.source,
-                )
-            )
+# @app.get("/get_suppliers")
+# async def get_suppliers(request: GetSuppliersRequest):
+#     limit: int = 10
+#     offset: int = (request.page - 1) * limit
+#     try:
+#         async with database.session() as session:
+#             stmt = select(
+#                 SuppliersModel
+#             ).limit(
+#                 limit
+#             ).offset(
+#                 offset
+#             ).where(
+#                 and_(
+#                     SuppliersModel.okpds.contains([request.okpd]),
+#                     SuppliersModel.is_smp == request.is_smp,
+#                     # SuppliersModel.source == request.source,
+#                 )
+#             )
 
-            res = await get_all_scalars(stmt)
-            suppliers = list(res)
+#             res = await get_all_scalars(stmt)
+#             suppliers = list(res)
 
-            return {
-                "status": 200,
-                "message": f"Get {len(suppliers)} suppliers",
-                "suppliers": suppliers[offset : offset + limit],
-            }
+#             return {
+#                 "status": 200,
+#                 "message": f"Get {len(suppliers)} suppliers",
+#                 "suppliers": suppliers[offset : offset + limit],
+#             }
 
-    except Exception as e:
-        return {
-            "status": 400,
-            "message": f"{e}",
-        }
+#     except Exception as e:
+#         return {
+#             "status": 400,
+#             "message": f"{e}",
+#         }
     
 
-@app.get("/find_okpd")
-async def find_okpd(request: FindOKPDRequest):
-    _str: str = request._str
+# @app.get("/find_okpd")
+# async def find_okpd(request: FindOKPDRequest):
+#     _str: str = request._str
 
-    stmt = select(
-        OKPDModel
-    ).where(
-        or_(
-            OKPDModel.code.ilike(f"%{_str}%"),
-            OKPDModel.name.ilike(f"%{_str}%"),
-        )
-    )
+#     stmt = select(
+#         OKPDModel
+#     ).where(
+#         or_(
+#             OKPDModel.code.ilike(f"%{_str}%"),
+#             OKPDModel.name.ilike(f"%{_str}%"),
+#         )
+#     )
 
-    try:
-        async with database.session() as session:
-            result = await get_all_scalars(stmt)
+#     try:
+#         async with database.session() as session:
+#             result = await get_all_scalars(stmt)
 
-    except Exception as e:
-        return {
-            "status": 400,
-            "message": f"{e}",
-        }
+#     except Exception as e:
+#         return {
+#             "status": 400,
+#             "message": f"{e}",
+#         }
 
-    return {
-        "status": 200,
-        "name": result,
-    }
+#     return {
+#         "status": 200,
+#         "name": result,
+#     }
