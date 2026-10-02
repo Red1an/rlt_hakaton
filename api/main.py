@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from sqlalchemy import select
-from typing import List
 from contextlib import asynccontextmanager
+from sqlalchemy import (
+    select,
+    or_,
+    and_
+)
 from database import (
     database,
     SuppliersModel
@@ -22,7 +25,6 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     await database.init()
     yield
-    # Код после yield — логика остановки
     print("Shutting down...")
 
 
@@ -33,6 +35,12 @@ app.include_router(match_router)
 
 @app.post("/enrich")
 async def enrich():
+    # worker run: search for new suppliers + search suppliers data + upd db
+
+    # ml run: upd suppliers
+
+    # /get_suppliers call for new suppliers
+
     return {
         "status": 200
     }
@@ -50,7 +58,11 @@ async def get_suppliers(request: GetSuppliersRequest):
             ).offset(
                 offset
             ).where(
-                SuppliersModel.okpds.contains([request.okpd])
+                and_(
+                    SuppliersModel.okpds.contains([request.okpd]),
+                    SuppliersModel.is_smp == request.is_smp,
+                    # SuppliersModel.source == request.source,
+                )
             )
 
             res = await get_all_scalars(stmt)
@@ -68,12 +80,6 @@ async def get_suppliers(request: GetSuppliersRequest):
             "message": f"{e}",
         }
     
-
-@app.get("/parse")
-async def parse():
-    return {
-        "status": 200
-    }
 
 @app.get("/find_okpd")
 async def find_okpd(request: FindOKPDRequest):
