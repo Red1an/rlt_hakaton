@@ -1,6 +1,9 @@
 import re
 
-import psycopg
+from sqlalchemy import and_, distinct, func, select
+from sqlalchemy.orm import Session
+
+from database import LotModel, OKPDModel
 
 RESULT_LIMIT = 50
 
@@ -11,22 +14,19 @@ def query_stems(query: str) -> list[str]:
     return [word[: max(4, len(word) - 2)] for word in re.findall(r"\w+", query.lower()) if len(word) >= 4]
 
 
-def detect_okpd(conn: psycopg.Connection, query: str) -> list[tuple[str, int]]:
+def detect_okpd(session: Session, query: str) -> list[tuple[str, int]]:
     stems = query_stems(query)
     if not stems:
         return []
-    conditions = " AND ".join("product_name ~* %s" for _ in stems)
-    return conn.execute(
-        f"""
-        SELECT left(okpd_code, 5) AS okpd_group, count(*)
-        FROM lots
-        WHERE okpd_code IS NOT NULL AND {conditions}
-        GROUP BY okpd_group
-        ORDER BY count(*) DESC
-        LIMIT 3
-        """,
-        [rf"\m{stem}" for stem in stems],
-    ).fetchall()
+    matches = and_(*(LotModel.product_name.regexp_match(rf"\m{stem}", flags="i") for stem in stems))
+    group = func.left(LotModel.okpd_code, 5).label("okpd_group")
+    return session.execute(
+        select(group, func.count())
+        .where(LotModel.okpd_code.is_not(None), matches)
+        .group_by(group)
+        .order_by(func.count().desc())
+        .limit(3)
+    ).all()
 
 
 def code_prefixes(code: str) -> set[str]:
@@ -40,20 +40,22 @@ def code_prefixes(code: str) -> set[str]:
     return prefixes
 
 
-def catalog(conn: psycopg.Connection) -> list[tuple[str, str]]:
+def catalog(session: Session) -> list[tuple[str, str]]:
     global _catalog
     if _catalog is None:
         used = set()
-        for (code,) in conn.execute("SELECT DISTINCT okpd_code FROM lots WHERE okpd_code IS NOT NULL"):
+        for (code,) in session.execute(select(distinct(LotModel.okpd_code)).where(LotModel.okpd_code.is_not(None))):
             used |= code_prefixes(code)
-        rows = conn.execute("SELECT code, name FROM okpd WHERE name IS NOT NULL ORDER BY code").fetchall()
+        rows = session.execute(
+            select(OKPDModel.code, OKPDModel.name).where(OKPDModel.name.is_not(None)).order_by(OKPDModel.code)
+        ).all()
         _catalog = [(code, name) for code, name in rows if code in used]
     return _catalog
 
 
-def list_categories(conn: psycopg.Connection, term: str) -> list[dict]:
+def list_categories(session: Session, term: str) -> list[dict]:
     term = term.strip().lower()
-    entries = catalog(conn)
+    entries = catalog(session)
     if not term:
         found = [entry for entry in entries if "." not in entry[0]]
     else:
@@ -66,6 +68,5 @@ def list_categories(conn: psycopg.Connection, term: str) -> list[dict]:
     return [{"code": code, "name": name} for code, name in found[:RESULT_LIMIT]]
 
 
-def category_name(conn: psycopg.Connection, code: str) -> str | None:
-    row = conn.execute("SELECT name FROM okpd WHERE code = %s", [code]).fetchone()
-    return row[0] if row else None
+def category_name(session: Session, code: str) -> str | None:
+    return session.execute(select(OKPDModel.name).where(OKPDModel.code == code)).scalar()

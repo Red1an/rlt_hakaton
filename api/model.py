@@ -5,40 +5,82 @@ from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    distinct,
+    func,
+    insert,
+    select,
+)
+from sqlalchemy.schema import CreateTable
 
-from .db import connect
+from database import AnnouncementModel, BidModel, LotModel, database
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "ml" / "model"
 LOT_FEATURES = {"lot_log_price", "lot_is_eshop", "lot_is_smp"}
-
-PROFILE_SQL = [
-    """
-    CREATE TEMP TABLE lot_groups ON COMMIT DROP AS
-    SELECT lot_id, mode() WITHIN GROUP (ORDER BY left(okpd_code, 5)) AS okpd_group
-    FROM lots
-    WHERE okpd_code ~ '^\\d{2}\\.\\d{2}'
-    GROUP BY lot_id
-    """,
-    """
-    SELECT b.supplier_inn, count(*), count(DISTINCT g.okpd_group), bool_or(a.is_smp)
-    FROM bids b
-    JOIN announcements a ON a.lot_id = b.lot_id
-    JOIN lot_groups g ON g.lot_id = b.lot_id
-    GROUP BY b.supplier_inn
-    """,
-    """
-    SELECT b.supplier_inn, left(g.okpd_group, 2), count(*)
-    FROM bids b
-    JOIN lot_groups g ON g.lot_id = b.lot_id
-    GROUP BY b.supplier_inn, left(g.okpd_group, 2)
-    """,
-]
 
 _lock = threading.Lock()
 _booster: lgb.Booster | None = None
 _features: list[str] = []
 _profiles: dict[str, tuple[int, int, bool]] | None = None
 _class_bids: dict[tuple[str, str], int] | None = None
+
+
+def lot_groups() -> Table:
+    return Table(
+        "lot_groups",
+        MetaData(),
+        Column("lot_id", Integer),
+        Column("okpd_group", String),
+        prefixes=["TEMPORARY"],
+        postgresql_on_commit="DROP",
+    )
+
+
+def fill_lot_groups(session, groups: Table) -> None:
+    session.execute(CreateTable(groups))
+    session.execute(
+        insert(groups).from_select(
+            ["lot_id", "okpd_group"],
+            select(
+                LotModel.lot_id,
+                func.mode().within_group(func.left(LotModel.okpd_code, 5)).label("okpd_group"),
+            )
+            .where(LotModel.okpd_code.regexp_match(r"^\d{2}\.\d{2}"))
+            .group_by(LotModel.lot_id),
+        )
+    )
+
+
+def profile_stmts(groups: Table) -> tuple:
+    okpd_group = groups.c.okpd_group
+    totals = (
+        select(
+            BidModel.supplier_inn,
+            func.count().label("bids"),
+            func.count(distinct(okpd_group)).label("groups"),
+            func.bool_or(AnnouncementModel.is_smp).label("is_msp"),
+        )
+        .select_from(BidModel)
+        .join(AnnouncementModel, AnnouncementModel.lot_id == BidModel.lot_id)
+        .join(groups, groups.c.lot_id == BidModel.lot_id)
+        .group_by(BidModel.supplier_inn)
+    )
+    classes = (
+        select(
+            BidModel.supplier_inn,
+            func.left(okpd_group, 2).label("class"),
+            func.count().label("bids"),
+        )
+        .select_from(BidModel)
+        .join(groups, groups.c.lot_id == BidModel.lot_id)
+        .group_by(BidModel.supplier_inn, func.left(okpd_group, 2))
+    )
+    return totals, classes
 
 
 def model_available() -> bool:
@@ -58,10 +100,12 @@ def supplier_profiles() -> tuple[dict[str, tuple[int, int, bool]], dict[tuple[st
     global _profiles, _class_bids
     with _lock:
         if _profiles is None:
-            with connect() as conn:
-                conn.execute(PROFILE_SQL[0])
-                _profiles = {inn: (total, groups, msp) for inn, total, groups, msp in conn.execute(PROFILE_SQL[1])}
-                _class_bids = {(inn, cls): count for inn, cls, count in conn.execute(PROFILE_SQL[2])}
+            with database.session() as session:
+                groups = lot_groups()
+                fill_lot_groups(session, groups)
+                totals, classes = profile_stmts(groups)
+                _profiles = {inn: (bids, groups_cnt, msp) for inn, bids, groups_cnt, msp in session.execute(totals)}
+                _class_bids = {(inn, cls): bids for inn, cls, bids in session.execute(classes)}
     return _profiles, _class_bids
 
 

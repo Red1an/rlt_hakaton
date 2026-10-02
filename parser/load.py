@@ -4,11 +4,13 @@ import sys
 import time
 from pathlib import Path
 
-import psycopg
 from dotenv import load_dotenv
+from sqlalchemy import func, inspect, select
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from database import database
 
 from parser.okpd import load_classifier
 
@@ -70,62 +72,49 @@ def collect_sources(data_dir: Path) -> dict[str, list[Path]]:
     return sources
 
 
-def connection_info() -> str:
-    return psycopg.conninfo.make_conninfo(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", ""),
-        dbname=os.getenv("POSTGRES_DB", "postgres"),
-    )
-
-
-def run_sql_file(conn: psycopg.Connection, name: str) -> None:
+def run_sql_file(session, name: str) -> None:
     started = time.perf_counter()
-    conn.execute((SQL_DIR / name).read_text(encoding="utf-8"))
+    session.connection().exec_driver_sql((SQL_DIR / name).read_text(encoding="utf-8"))
     print(f"{name}: {time.perf_counter() - started:.1f} с")
 
 
-def copy_csv(conn: psycopg.Connection, table: str, path: Path) -> None:
+def copy_csv(session, table: str, path: Path) -> None:
+    """Потоковая загрузка CSV: SQLAlchemy держит соединение и транзакцию,
+    а COPY-канал драйвера только передаёт байты файла в сервер."""
     started = time.perf_counter()
-    copy_sql = f"COPY {table} FROM STDIN (FORMAT csv, DELIMITER ';', HEADER true, ENCODING 'UTF8')"
-    with conn.cursor() as cur, path.open("rb") as source:
-        with cur.copy(copy_sql) as copy:
-            while chunk := source.read(CHUNK_SIZE):
-                copy.write(chunk)
-        rows = cur.rowcount
-    print(f"{table} ← {path.name}: {rows} строк, {time.perf_counter() - started:.1f} с")
+    statement = f"COPY {table} FROM STDIN (FORMAT csv, DELIMITER ';', HEADER true, ENCODING 'UTF8')"
+    dbapi = session.connection().connection.driver_connection
+    cursor = dbapi.cursor()
+    with cursor.copy(statement) as copy, path.open("rb") as source:
+        while chunk := source.read(CHUNK_SIZE):
+            copy.write(chunk)
+    print(f"{table} ← {path.name}: {cursor.rowcount} строк, {time.perf_counter() - started:.1f} с")
 
 
-def check_tables(conn: psycopg.Connection) -> None:
-    existing = {
-        row[0]
-        for row in conn.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()"
-        )
-    }
+def check_tables() -> None:
+    existing = set(inspect(database.engine).get_table_names())
     missing = [table for table in REQUIRED_TABLES if table not in existing]
     if missing:
         sys.exit(f"В базе нет таблиц: {', '.join(missing)}. Сначала создайте схему из database/models.")
 
 
 def load_sources(
-    conn: psycopg.Connection,
+    session,
     sources: dict[str, list[Path]],
     dataset: str,
     replace: bool,
     with_classifier: bool = True,
 ) -> None:
     if replace:
-        run_sql_file(conn, "truncate.sql")
-    run_sql_file(conn, "staging.sql")
+        run_sql_file(session, "truncate.sql")
+    run_sql_file(session, "staging.sql")
     for table, files in sources.items():
         for path in files:
-            copy_csv(conn, table, path)
+            copy_csv(session, table, path)
     if with_classifier:
-        print(f"Справочник ОКПД2: {load_classifier(conn)} кодов")
-    conn.execute("SELECT set_config('app.dataset', %s, true)", [dataset])
-    run_sql_file(conn, "load.sql")
+        print(f"Справочник ОКПД2: {load_classifier(session)} кодов")
+    session.execute(select(func.set_config("app.dataset", dataset, True)))
+    run_sql_file(session, "load.sql")
 
 
 def main() -> None:
@@ -152,10 +141,10 @@ def main() -> None:
     print("Режим: полная перезагрузка" if replace else "Режим: дозагрузка, история сохраняется")
     print(f"Набор: {dataset}")
 
-    with psycopg.connect(connection_info()) as conn:
-        check_tables(conn)
-        load_sources(conn, sources, dataset, replace)
-        conn.commit()
+    database.init()
+    check_tables()
+    with database.session() as session:
+        load_sources(session, sources, dataset, replace)
 
 
 if __name__ == "__main__":

@@ -3,9 +3,11 @@ import re
 import threading
 
 import httpx
-import psycopg
+from sqlalchemy import column, distinct, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
-from .db import connect
+from database import SuppliersModel, database
 from worker.discover import discover
 from worker.egrul import egrul
 from worker.utils import HEADERS
@@ -16,15 +18,16 @@ _names_lock = threading.Lock()
 
 
 def enrich_names(inns: list[str]) -> None:
-    with _names_lock, connect() as conn, httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+    with _names_lock, database.session() as session, httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True) as client:
         for inn in inns:
             record = egrul(client, inn)
             if record and record.get("name"):
-                conn.execute(
-                    "UPDATE suppliers SET name = %s WHERE inn = %s AND name IS NULL",
-                    [record["name"], inn],
+                session.execute(
+                    update(SuppliersModel)
+                    .where(SuppliersModel.inn == inn, SuppliersModel.name.is_(None))
+                    .values(name=record["name"])
                 )
-                conn.commit()
+                session.commit()
 
 
 def search_phrase(category_name: str) -> str:
@@ -32,37 +35,43 @@ def search_phrase(category_name: str) -> str:
     return " ".join(phrase.split()[:6])
 
 
-def find_new_suppliers(conn: psycopg.Connection, okpd: str, category_name: str) -> int:
-    known_inns = {row[0] for row in conn.execute("SELECT inn FROM suppliers")}
+def supplier_stmt(okpd: str, company: dict):
+    stmt = pg_insert(SuppliersModel).values(
+        inn=company["inn"],
+        kpp=company["kpp"],
+        name=company["name"],
+        is_smp=False,
+        okpds=[okpd],
+        source="web",
+        site=company["site"],
+        role=company["role"],
+        role_reason=company["role_reason"],
+        contacts=json.dumps(company.get("contacts", {}), ensure_ascii=False),
+    )
+    merged_okpds = (
+        select(func.array_agg(distinct(column("value"))))
+        .select_from(func.unnest(SuppliersModel.okpds + stmt.excluded.okpds).table_valued("value"))
+        .scalar_subquery()
+    )
+    return stmt.on_conflict_do_update(
+        index_elements=[SuppliersModel.inn],
+        set_={
+            "kpp": func.coalesce(SuppliersModel.kpp, stmt.excluded.kpp),
+            "name": func.coalesce(SuppliersModel.name, stmt.excluded.name),
+            "okpds": merged_okpds,
+            "source": "web",
+            "site": func.coalesce(SuppliersModel.site, stmt.excluded.site),
+            "role": func.coalesce(SuppliersModel.role, stmt.excluded.role),
+            "role_reason": func.coalesce(SuppliersModel.role_reason, stmt.excluded.role_reason),
+            "contacts": func.coalesce(SuppliersModel.contacts, stmt.excluded.contacts),
+        },
+    )
+
+
+def find_new_suppliers(session: Session, okpd: str, category_name: str) -> int:
+    known_inns = set(session.execute(select(SuppliersModel.inn)).scalars())
     companies = discover(search_phrase(category_name), MAX_SITES, known_inns, refresh=True)
     for company in companies:
-        conn.execute(
-            """
-            INSERT INTO suppliers (
-                inn, kpp, name, is_smp, okpds, source, site, role,
-                role_reason, contacts
-            ) VALUES (
-                %(inn)s, %(kpp)s, %(name)s, false, ARRAY[%(okpd)s], 'web',
-                %(site)s, %(role)s, %(role_reason)s, %(contacts)s
-            )
-            ON CONFLICT (inn) DO UPDATE SET
-                kpp = COALESCE(suppliers.kpp, EXCLUDED.kpp),
-                name = COALESCE(suppliers.name, EXCLUDED.name),
-                okpds = ARRAY(
-                    SELECT DISTINCT value
-                    FROM unnest(suppliers.okpds || EXCLUDED.okpds) AS value
-                ),
-                source = 'web',
-                site = COALESCE(suppliers.site, EXCLUDED.site),
-                role = COALESCE(suppliers.role, EXCLUDED.role),
-                role_reason = COALESCE(suppliers.role_reason, EXCLUDED.role_reason),
-                contacts = COALESCE(suppliers.contacts, EXCLUDED.contacts)
-            """,
-            {
-                **company,
-                "okpd": okpd,
-                "contacts": json.dumps(company.get("contacts", {}), ensure_ascii=False),
-            },
-        )
-    conn.commit()
+        session.execute(supplier_stmt(okpd, company))
+    session.commit()
     return len(companies)

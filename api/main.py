@@ -2,12 +2,9 @@ from typing import Annotated
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from sqlalchemy import (
     select,
-    or_,
-    and_,
     func,
     distinct,
     text
@@ -29,12 +26,9 @@ from .routes import router as match_router
 from worker import discover
 
 
-load_dotenv()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await database.init()
+    database.init()
     yield
     print("Shutting down...")
 
@@ -45,7 +39,7 @@ app.include_router(match_router)
 
 
 @app.get("/enrich")
-async def enrich():
+def enrich():
 
     return discover(100, {})
     # worker run: search for new suppliers + search suppliers data + upd db
@@ -124,7 +118,7 @@ async def enrich():
 
 
 @app.get("/graphs/activity")
-async def graphs_activity(inn: str):
+def graphs_activity(inn: str):
     month = func.date_trunc("month", AnnouncementModel.publish_date)
 
     stmt = (
@@ -145,8 +139,8 @@ async def graphs_activity(inn: str):
     )
 
     try:
-        async with database.session() as session:
-            rows = (await session.execute(stmt)).all()
+        with database.session() as session:
+            rows = session.execute(stmt).all()
     except Exception as e:
         return {
             "status": 400,
@@ -170,7 +164,7 @@ async def graphs_activity(inn: str):
 
 
 @app.get("/graphs/okpd")
-async def graphs_okpd(inn: str, top: Annotated[int, Query(ge=1, le=50)] = 8):
+def graphs_okpd(inn: str, top: Annotated[int, Query(ge=1, le=50)] = 8):
     # Суммы считаем по всей истории поставщика, а не по обрезанному списку:
     # иначе проценты станут долями от топ-N и верхняя полоса всегда 100%.
     totals = (
@@ -210,8 +204,8 @@ async def graphs_okpd(inn: str, top: Annotated[int, Query(ge=1, le=50)] = 8):
     )
 
     try:
-        async with database.session() as session:
-            rows = (await session.execute(stmt)).all()
+        with database.session() as session:
+            rows = session.execute(stmt).all()
     except Exception as e:
         return {
             "status": 400,

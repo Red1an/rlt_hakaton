@@ -4,6 +4,7 @@ from .models import (
     Base,
     BidModel,
     LotModel,
+    LotRecommendationModel,
     OKPDModel,
     SuppliersModel,
     int_pk,
@@ -19,4 +20,5 @@ __all__ = [
     "SuppliersModel",
     "AnnouncementModel",
     "BidModel",
+    "LotRecommendationModel",
 ]

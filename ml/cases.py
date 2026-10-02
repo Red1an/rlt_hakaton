@@ -6,7 +6,8 @@ import pandas as pd
 from ml.data import CACHE_DIR, load_all
 from ml.features import FEATURES, build_examples
 from ml.train import TEST_CUTOFF, TEST_UNTIL, TRAIN_CUTOFF, TRAIN_UNTIL, fit_ranker
-from api.db import connect
+from sqlalchemy import func, select
+from database import AnnouncementModel, SuppliersModel, database
 
 EVAL_MODEL_PATH = CACHE_DIR / "eval_model.txt"
 SHOWN = 5
@@ -21,9 +22,19 @@ def eval_model(lots: pd.DataFrame, bids: pd.DataFrame, suppliers: pd.DataFrame, 
 
 
 def lookup(lot_ids: list[int], inns: list[str]) -> tuple[dict[int, str], dict[str, str]]:
-    with connect() as conn:
-        subjects = dict(conn.execute("SELECT lot_id, subject FROM announcements WHERE lot_id = ANY(%s)", [lot_ids]))
-        names = dict(conn.execute("SELECT inn, coalesce(name, 'ИНН ' || inn) FROM suppliers WHERE inn = ANY(%s)", [inns]))
+    with database.session() as session:
+        subjects = dict(
+            session.execute(
+                select(AnnouncementModel.lot_id, AnnouncementModel.subject).where(AnnouncementModel.lot_id.in_(lot_ids))
+            ).all()
+        )
+        names = dict(
+            session.execute(
+                select(SuppliersModel.inn, func.coalesce(SuppliersModel.name, "ИНН " + SuppliersModel.inn)).where(
+                    SuppliersModel.inn.in_(inns)
+                )
+            ).all()
+        )
     return subjects, names
 
 

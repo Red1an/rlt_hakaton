@@ -1,19 +1,19 @@
 import os
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-from typing import Any
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from .models import Base
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from .models import Base
+
 load_dotenv()
 
 
-def _build_db_url():
+def _build_db_url() -> str:
     required = ["POSTGRES_SCHEME", "POSTGRES_HOST"]
     if any(not os.getenv(var) for var in required):
         raise ValueError(f"Missing required env vars: {required}")
@@ -28,61 +28,70 @@ def _build_db_url():
     return f"{scheme}://{user}:{password}@{host}:{port}/{name}"
 
 
+def _echo_enabled() -> bool:
+    return os.getenv("SQL_ECHO", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Database:
-    _engine: AsyncEngine = None
-    _sessionmaker: async_sessionmaker | None = None
+    def __init__(self) -> None:
+        self._engine: Engine | None = None
+        self._sessionmaker: sessionmaker[Session] | None = None
+        self._lock = threading.Lock()
 
-    async def init(self):
-        db_url = _build_db_url()
-        self._engine = create_async_engine(
-            db_url,
-            echo=True,
-            pool_pre_ping=True,
-        )
-        self._sessionmaker = async_sessionmaker(
-            self._engine,
-            expire_on_commit=False,
-            class_=AsyncSession,
-        )
+    @property
+    def engine(self) -> Engine:
+        if self._engine is None:
+            self.init()
+        return self._engine
 
-        async with self._engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    @property
+    def sessionmaker(self) -> sessionmaker[Session]:
+        if self._sessionmaker is None:
+            self.init()
+        return self._sessionmaker
 
-    @asynccontextmanager
-    async def session(self) -> AsyncGenerator[AsyncSession, None]:
-        if not self._sessionmaker:
-            await self.init()
+    def init(self) -> None:
+        with self._lock:
+            if self._engine is not None:
+                return
+            self._engine = create_engine(
+                _build_db_url(),
+                echo=_echo_enabled(),
+                pool_pre_ping=True,
+            )
+            self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False)
 
-        if not self._sessionmaker:
-            raise Exception("No sessionmaker")
+        Base.metadata.create_all(self._engine)
 
-        async with self._sessionmaker() as session:
+    def dispose(self) -> None:
+        with self._lock:
+            if self._engine is not None:
+                self._engine.dispose()
+            self._engine = None
+            self._sessionmaker = None
+
+    @contextmanager
+    def session(self) -> Iterator[Session]:
+        with self.sessionmaker() as session:
             try:
                 yield session
-                await session.commit()
+                session.commit()
             except Exception:
-                await session.rollback()
+                session.rollback()
                 raise
-            finally:
-                await session.close()
 
-    async def get_scalar(self, stmt):
-        if not self._sessionmaker:
-            await self.init()
+    @contextmanager
+    def connection(self) -> Iterator[Connection]:
+        with self.engine.begin() as connection:
+            yield connection
 
-        async with self._sessionmaker() as session:
-            res = await session.execute(stmt)
+    def get_scalar(self, stmt):
+        with self.session() as session:
+            return session.execute(stmt).scalar()
 
-        return res.scalar()
-
-    async def get_all_scalars(self, stmt):
-        if not self._sessionmaker:
-            await self.init()
-
-        async with self._sessionmaker() as session:
-            res = (await session.execute(stmt)).scalars().all()
-
-        return res
+    def get_all_scalars(self, stmt):
+        with self.session() as session:
+            return session.execute(stmt).scalars().all()
 
 
 database = Database()

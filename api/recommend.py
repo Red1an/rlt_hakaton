@@ -2,8 +2,24 @@ import json
 import math
 from datetime import date, timedelta
 
-import psycopg
-from psycopg.rows import dict_row
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    Table,
+    and_,
+    any_,
+    distinct,
+    exists,
+    func,
+    insert,
+    or_,
+    select,
+)
+from sqlalchemy.orm import Session
+from sqlalchemy.schema import CreateTable
+
+from database import AnnouncementModel, BidModel, LotModel, SuppliersModel
 
 from . import model
 from worker.dadata import okved_section
@@ -22,68 +38,7 @@ HISTORY_ROWS = 5
 REASONS_SHOWN = 3
 FACTORS_SHOWN = 5
 EMPTY = "—"
-
-SIMILAR_LOTS_SQL = """
-    CREATE TEMP TABLE similar_lots ON COMMIT DROP AS
-    SELECT s.lot_id, count(b.supplier_inn) AS participants
-    FROM (SELECT DISTINCT lot_id FROM lots WHERE okpd_code LIKE ANY(%(prefixes)s)) s
-    JOIN bids b ON b.lot_id = s.lot_id
-    GROUP BY s.lot_id
-"""
-
-HISTORY_SQL = """
-    SELECT
-        b.supplier_inn,
-        count(*)                                                        AS part,
-        count(*) FILTER (WHERE b.is_winner)                             AS wins,
-        count(*) FILTER (WHERE sl.participants >= 2)                    AS comp_part,
-        count(*) FILTER (WHERE sl.participants >= 2 AND b.is_winner)    AS comp_wins,
-        count(*) FILTER (WHERE sl.participants = 1)                     AS direct_cnt,
-        max(a.publish_date)                                             AS last_date,
-        count(*) FILTER (WHERE a.is_eshop_or_aisgz)                     AS eshop_bids,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY a.start_price)      AS typical_price,
-        count(*) FILTER (WHERE a.customer_inn = %(customer)s)           AS customer_group_bids,
-        s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date
-    FROM bids b
-    JOIN similar_lots sl ON sl.lot_id = b.lot_id
-    JOIN announcements a ON a.lot_id = b.lot_id
-    JOIN suppliers s ON s.inn = b.supplier_inn
-    WHERE (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
-    GROUP BY b.supplier_inn, s.name, s.kpp, s.role, s.role_reason, s.status, s.ogrn, s.okved_main, s.region_code, s.reg_date
-"""
-
-CUSTOMER_BIDS_SQL = """
-    SELECT b.supplier_inn, count(*)
-    FROM bids b
-    JOIN announcements a ON a.lot_id = b.lot_id
-    WHERE a.customer_inn = %(customer)s
-    GROUP BY b.supplier_inn
-"""
-
-NEW_SQL = """
-    SELECT inn, kpp, name, role, role_reason, site, contacts, status, ogrn, okved_main, region_code, reg_date
-    FROM suppliers s
-    WHERE source = 'web'
-      AND (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
-      AND EXISTS (
-          SELECT 1 FROM unnest(okpds) code, unnest(%(codes)s::text[]) wanted
-          WHERE code LIKE wanted || '%%' OR wanted LIKE code || '%%'
-      )
-"""
-
-LOT_HISTORY_SQL = """
-    SELECT inn, subject, start_price, customer_inn, is_winner
-    FROM (
-        SELECT
-            b.supplier_inn AS inn, a.subject, a.start_price, a.customer_inn, b.is_winner,
-            row_number() OVER (PARTITION BY b.supplier_inn ORDER BY a.publish_date DESC) AS position
-        FROM bids b
-        JOIN similar_lots s ON s.lot_id = b.lot_id
-        JOIN announcements a ON a.lot_id = b.lot_id
-        WHERE b.supplier_inn = ANY(%(inns)s)
-    ) ranked
-    WHERE position <= %(rows)s
-"""
+CLOSED_STATUSES = ("LIQUIDATED", "BANKRUPT")
 
 FACTOR_GROUPS = {
     "experience": ["part", "wins", "win_share", "comp_part", "comp_wins", "comp_win_share"],
@@ -110,6 +65,156 @@ GROUP_ICONS = {
 }
 
 MIN_IMPACT = 0.05
+
+
+def similar_lots() -> Table:
+    return Table(
+        "similar_lots",
+        MetaData(),
+        Column("lot_id", Integer),
+        Column("participants", Integer),
+        prefixes=["TEMPORARY"],
+        postgresql_on_commit="DROP",
+    )
+
+
+def create_similar_lots(session: Session, prefixes: list[str]) -> Table:
+    table = similar_lots()
+    category = select(distinct(LotModel.lot_id)).where(LotModel.okpd_code.like(any_(prefixes))).subquery()
+    session.execute(CreateTable(table))
+    session.execute(
+        insert(table).from_select(
+            ["lot_id", "participants"],
+            select(
+                category.c.lot_id,
+                func.count(BidModel.supplier_inn).label("participants"),
+            )
+            .select_from(category)
+            .join(BidModel, BidModel.lot_id == category.c.lot_id)
+            .group_by(category.c.lot_id),
+        )
+    )
+    return table
+
+
+def history_stmt(groups: Table, customer: str | None):
+    competing = groups.c.participants >= 2
+    return (
+        select(
+            BidModel.supplier_inn,
+            func.count().label("part"),
+            func.count().filter(BidModel.is_winner).label("wins"),
+            func.count().filter(competing).label("comp_part"),
+            func.count().filter(and_(competing, BidModel.is_winner)).label("comp_wins"),
+            func.count().filter(groups.c.participants == 1).label("direct_cnt"),
+            func.max(AnnouncementModel.publish_date).label("last_date"),
+            func.count().filter(AnnouncementModel.is_eshop_or_aisgz).label("eshop_bids"),
+            func.percentile_cont(0.5).within_group(AnnouncementModel.start_price).label("typical_price"),
+            func.count().filter(AnnouncementModel.customer_inn == customer).label("customer_group_bids"),
+            SuppliersModel.name,
+            SuppliersModel.kpp,
+            SuppliersModel.role,
+            SuppliersModel.role_reason,
+            SuppliersModel.status,
+            SuppliersModel.ogrn,
+            SuppliersModel.okved_main,
+            SuppliersModel.region_code,
+            SuppliersModel.reg_date,
+        )
+        .select_from(BidModel)
+        .join(groups, groups.c.lot_id == BidModel.lot_id)
+        .join(AnnouncementModel, AnnouncementModel.lot_id == BidModel.lot_id)
+        .join(SuppliersModel, SuppliersModel.inn == BidModel.supplier_inn)
+        .where(or_(SuppliersModel.status.is_(None), SuppliersModel.status.not_in(CLOSED_STATUSES)))
+        .group_by(
+            BidModel.supplier_inn,
+            SuppliersModel.name,
+            SuppliersModel.kpp,
+            SuppliersModel.role,
+            SuppliersModel.role_reason,
+            SuppliersModel.status,
+            SuppliersModel.ogrn,
+            SuppliersModel.okved_main,
+            SuppliersModel.region_code,
+            SuppliersModel.reg_date,
+        )
+    )
+
+
+def customer_bids_stmt(customer: str | None):
+    return (
+        select(BidModel.supplier_inn, func.count().label("bids"))
+        .select_from(BidModel)
+        .join(AnnouncementModel, AnnouncementModel.lot_id == BidModel.lot_id)
+        .where(AnnouncementModel.customer_inn == customer)
+        .group_by(BidModel.supplier_inn)
+    )
+
+
+def new_stmt(codes: list[str]):
+    code = func.unnest(SuppliersModel.okpds).table_valued("code").render_derived()
+    wanted = func.unnest(codes).table_valued("wanted").render_derived()
+    matching = exists(
+        select(1)
+        .select_from(code, wanted)
+        .where(or_(code.c.code.like(wanted.c.wanted + "%"), wanted.c.wanted.like(code.c.code + "%")))
+    )
+    return select(
+        SuppliersModel.inn,
+        SuppliersModel.kpp,
+        SuppliersModel.name,
+        SuppliersModel.role,
+        SuppliersModel.role_reason,
+        SuppliersModel.site,
+        SuppliersModel.contacts,
+        SuppliersModel.status,
+        SuppliersModel.ogrn,
+        SuppliersModel.okved_main,
+        SuppliersModel.region_code,
+        SuppliersModel.reg_date,
+    ).where(
+        SuppliersModel.source == "web",
+        or_(SuppliersModel.status.is_(None), SuppliersModel.status.not_in(CLOSED_STATUSES)),
+        matching,
+    )
+
+
+def lot_history_stmt(groups: Table, inns: list[str], rows: int):
+    ranked = (
+        select(
+            BidModel.supplier_inn.label("inn"),
+            AnnouncementModel.subject,
+            AnnouncementModel.start_price,
+            AnnouncementModel.customer_inn,
+            BidModel.is_winner,
+            func.row_number()
+            .over(partition_by=BidModel.supplier_inn, order_by=AnnouncementModel.publish_date.desc())
+            .label("position"),
+        )
+        .select_from(BidModel)
+        .join(groups, groups.c.lot_id == BidModel.lot_id)
+        .join(AnnouncementModel, AnnouncementModel.lot_id == BidModel.lot_id)
+        .where(BidModel.supplier_inn.in_(inns))
+        .subquery()
+    )
+    return select(
+        ranked.c.inn,
+        ranked.c.subject,
+        ranked.c.start_price,
+        ranked.c.customer_inn,
+        ranked.c.is_winner,
+    ).where(ranked.c.position <= rows)
+
+
+def history_end_stmt():
+    return select(func.max(AnnouncementModel.publish_date)).where(AnnouncementModel.dataset == "history")
+
+
+def names_stmt(inns: list[str]):
+    return select(SuppliersModel.inn, SuppliersModel.name).where(
+        SuppliersModel.inn.in_(inns),
+        SuppliersModel.name.is_not(None),
+    )
 
 
 def valid_kpp(kpp: str | None) -> str | None:
@@ -363,24 +468,24 @@ def new_item(row: dict) -> dict:
     }
 
 
-def load_rows(conn: psycopg.Connection, params: dict, lot_date: date) -> list[dict]:
+def load_rows(session: Session, groups: Table, customer: str | None, lot_date: date) -> list[dict]:
     profiles, _ = model.supplier_profiles()
-    customer_bids = dict(conn.execute(CUSTOMER_BIDS_SQL, params)) if params["customer"] else {}
+    customer_bids = dict(session.execute(customer_bids_stmt(customer)).all()) if customer else {}
     rows = []
-    with conn.cursor(row_factory=dict_row) as cur:
-        for record in cur.execute(HISTORY_SQL, params):
-            inn = record.pop("supplier_inn")
-            region = record["region_code"] or region_code(inn, record["kpp"])
-            rows.append({
-                **record,
-                "inn": inn,
-                "days": (lot_date - record["last_date"]).days,
-                "typical_price": float(record["typical_price"]),
-                "customer_bids": customer_bids.get(inn, 0),
-                "region": region,
-                "is_local": region in LOCAL_REGIONS,
-                "is_msp": profiles.get(inn, (0, 0, False))[2],
-            })
+    for mapping in session.execute(history_stmt(groups, customer)).mappings():
+        record = dict(mapping)
+        inn = record.pop("supplier_inn")
+        region = record["region_code"] or region_code(inn, record["kpp"])
+        rows.append({
+            **record,
+            "inn": inn,
+            "days": (lot_date - record["last_date"]).days,
+            "typical_price": float(record["typical_price"]),
+            "customer_bids": customer_bids.get(inn, 0),
+            "region": region,
+            "is_local": region in LOCAL_REGIONS,
+            "is_msp": profiles.get(inn, (0, 0, False))[2],
+        })
     return rows
 
 
@@ -391,11 +496,8 @@ def scale(scores: list[float]) -> list[int]:
     return [round(100 * (score - low) / (high - low)) for score in scores]
 
 
-HISTORY_END_SQL = "SELECT max(publish_date) FROM announcements WHERE dataset = 'history'"
-
-
 def recommend(
-    conn: psycopg.Connection,
+    session: Session,
     okpd: str,
     nmck: float | None = None,
     eshop: bool = False,
@@ -406,12 +508,11 @@ def recommend(
     lot_date: date | None = None,
 ) -> dict:
     codes = [okpd] + [code for code in extra_codes or [] if code != okpd]
-    params = {"prefixes": [f"{code}%" for code in codes], "codes": codes, "customer": customer_inn}
-    lot_date = lot_date or conn.execute(HISTORY_END_SQL).fetchone()[0] + timedelta(days=1)
+    lot_date = lot_date or session.execute(history_end_stmt()).scalar() + timedelta(days=1)
     lot = {"okpd": okpd, "nmck": float(nmck or 0), "eshop": eshop, "smp": msp_only, "customer": customer_inn}
-    conn.execute(SIMILAR_LOTS_SQL, params)
+    groups = create_similar_lots(session, [f"{code}%" for code in codes])
 
-    candidates = select_candidates(load_rows(conn, params, lot_date))
+    candidates = select_candidates(load_rows(session, groups, customer_inn, lot_date))
     if msp_only:
         candidates = [row for row in candidates if row["is_msp"]]
 
@@ -434,25 +535,27 @@ def recommend(
     history = top + contenders + fill
 
     by_inn = {item["inn"]: item for item in history}
-    for inn, subject, start_price, lot_customer, is_winner in conn.execute(
-        LOT_HISTORY_SQL, {"inns": list(by_inn), "rows": HISTORY_ROWS}
-    ):
-        by_inn[inn]["history"].append({
-            "subject": subject,
-            "nmck": round(start_price),
-            "customer": f"Заказчик ИНН {lot_customer}",
-            "won": is_winner,
-        })
+    if by_inn:
+        for row in session.execute(lot_history_stmt(groups, list(by_inn), HISTORY_ROWS)):
+            by_inn[row.inn]["history"].append({
+                "subject": row.subject,
+                "nmck": round(row.start_price),
+                "customer": f"Заказчик ИНН {row.customer_inn}",
+                "won": row.is_winner,
+            })
 
-    with conn.cursor(row_factory=dict_row) as cur:
-        new = sorted((new_item(row) for row in cur.execute(NEW_SQL, params)), key=lambda item: item["score"], reverse=True)
+    new = sorted(
+        (new_item(dict(mapping)) for mapping in session.execute(new_stmt(codes)).mappings()),
+        key=lambda item: item["score"],
+        reverse=True,
+    )
     return {"okpd": okpd, "items": history + new, "model": model.model_available()}
 
 
-def fill_names(conn: psycopg.Connection, items: list[dict]) -> list[dict]:
+def fill_names(session: Session, items: list[dict]) -> list[dict]:
     missing = [item["inn"] for item in items if item["name"].startswith("Компания ИНН")]
     if missing:
-        names = dict(conn.execute("SELECT inn, name FROM suppliers WHERE inn = ANY(%s) AND name IS NOT NULL", [missing]))
+        names = dict(session.execute(names_stmt(missing)).all())
         for item in items:
             if item["inn"] in names:
                 item["name"] = names[item["inn"]]

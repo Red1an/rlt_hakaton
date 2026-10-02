@@ -6,72 +6,24 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from psycopg.types.json import Jsonb
+from sqlalchemy import delete, distinct, func, literal_column, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
+from database import (
+    AnnouncementModel,
+    LotModel,
+    LotRecommendationModel,
+    database,
+)
 from parser.load import HISTORY_DATASET, collect_sources, load_sources
 
-from .db import connect
 from .jobs import enrich_names
 from .recommend import fill_names, recommend
 
 TOP_PREVIEW = 3
 TOP_EXPORT = 10
 NAMES_PER_LOT = 10
-
-BATCHES_SQL = """
-    SELECT
-        a.dataset,
-        count(*)                AS lots,
-        count(r.lot_id)         AS computed,
-        min(a.publish_date)     AS date_from,
-        max(a.publish_date)     AS date_to,
-        max(r.computed_at)      AS computed_at
-    FROM announcements a
-    LEFT JOIN lot_recommendations r ON r.lot_id = a.lot_id
-    WHERE a.dataset <> %(history)s
-    GROUP BY a.dataset
-    ORDER BY max(a.publish_date) DESC, a.dataset
-"""
-
-LOTS_SQL = """
-    SELECT
-        a.lot_id,
-        a.publish_date,
-        a.start_price,
-        a.subject,
-        a.is_smp,
-        a.customer_inn,
-        a.is_eshop_or_aisgz,
-        coalesce(g.groups, ARRAY[]::text[]) AS groups,
-        g.main_group,
-        r.items,
-        r.computed_at
-    FROM announcements a
-    LEFT JOIN (
-        SELECT
-            lot_id,
-            array_agg(DISTINCT left(okpd_code, 5)) AS groups,
-            mode() WITHIN GROUP (ORDER BY left(okpd_code, 5)) AS main_group
-        FROM lots
-        WHERE okpd_code ~ '^\\d{2}\\.\\d{2}'
-          AND lot_id IN (SELECT lot_id FROM announcements WHERE dataset = %(dataset)s)
-        GROUP BY lot_id
-    ) g ON g.lot_id = a.lot_id
-    LEFT JOIN lot_recommendations r ON r.lot_id = a.lot_id
-    WHERE a.dataset = %(dataset)s
-    ORDER BY a.publish_date, a.lot_id
-"""
-
-UPSERT_SQL = """
-    INSERT INTO lot_recommendations (lot_id, items, computed_at)
-    VALUES (%s, %s, now())
-    ON CONFLICT (lot_id) DO UPDATE SET items = EXCLUDED.items, computed_at = EXCLUDED.computed_at
-"""
-
-DELETE_SQL = [
-    "DELETE FROM lots WHERE lot_id IN (SELECT lot_id FROM announcements WHERE dataset = %(dataset)s)",
-    "DELETE FROM announcements WHERE dataset = %(dataset)s",
-]
 
 EXPORT_COLUMNS = [
     "lot_id", "publish_date", "subject", "customer_inn", "start_price", "platform", "only_msp",
@@ -91,27 +43,96 @@ def job_state(dataset: str) -> dict:
     return _jobs.get(dataset, {"status": "idle"})
 
 
-def list_batches() -> list[dict]:
-    with connect() as conn:
-        rows = conn.execute(BATCHES_SQL, {"history": HISTORY_DATASET}).fetchall()
+def batches_stmt():
+    return (
+        select(
+            AnnouncementModel.dataset.label("dataset"),
+            func.count().label("lots"),
+            func.count(LotRecommendationModel.lot_id).label("computed"),
+            func.min(AnnouncementModel.publish_date).label("date_from"),
+            func.max(AnnouncementModel.publish_date).label("date_to"),
+            func.max(LotRecommendationModel.computed_at).label("computed_at"),
+        )
+        .select_from(AnnouncementModel)
+        .outerjoin(LotRecommendationModel, LotRecommendationModel.lot_id == AnnouncementModel.lot_id)
+        .where(AnnouncementModel.dataset != HISTORY_DATASET)
+        .group_by(AnnouncementModel.dataset)
+        .order_by(func.max(AnnouncementModel.publish_date).desc(), AnnouncementModel.dataset)
+    )
+
+
+def lots_stmt(dataset: str):
+    dataset_lots = select(AnnouncementModel.lot_id).where(AnnouncementModel.dataset == dataset)
+    groups = (
+        select(
+            LotModel.lot_id,
+            func.array_agg(distinct(func.left(LotModel.okpd_code, 5))).label("groups"),
+            func.mode().within_group(func.left(LotModel.okpd_code, 5)).label("main_group"),
+        )
+        .where(
+            LotModel.okpd_code.regexp_match(r"^\d{2}\.\d{2}"),
+            LotModel.lot_id.in_(dataset_lots),
+        )
+        .group_by(LotModel.lot_id)
+        .subquery()
+    )
+    return (
+        select(
+            AnnouncementModel.lot_id,
+            AnnouncementModel.publish_date,
+            AnnouncementModel.start_price,
+            AnnouncementModel.subject,
+            AnnouncementModel.is_smp,
+            AnnouncementModel.customer_inn,
+            AnnouncementModel.is_eshop_or_aisgz.label("is_eshop"),
+            func.coalesce(groups.c.groups, literal_column("ARRAY[]::text[]")).label("groups"),
+            groups.c.main_group.label("main_group"),
+            LotRecommendationModel.items,
+            LotRecommendationModel.computed_at,
+        )
+        .select_from(AnnouncementModel)
+        .outerjoin(groups, groups.c.lot_id == AnnouncementModel.lot_id)
+        .outerjoin(LotRecommendationModel, LotRecommendationModel.lot_id == AnnouncementModel.lot_id)
+        .where(AnnouncementModel.dataset == dataset)
+        .order_by(AnnouncementModel.publish_date, AnnouncementModel.lot_id)
+    )
+
+
+def upsert_stmt(lot_id: int, items: list[dict]):
+    stmt = pg_insert(LotRecommendationModel).values(lot_id=lot_id, items=items, computed_at=func.now())
+    return stmt.on_conflict_do_update(
+        index_elements=[LotRecommendationModel.lot_id],
+        set_={"items": stmt.excluded.items, "computed_at": stmt.excluded.computed_at},
+    )
+
+
+def delete_stmts(dataset: str) -> list:
+    dataset_lots = select(AnnouncementModel.lot_id).where(AnnouncementModel.dataset == dataset)
     return [
-        {
-            "name": name,
-            "lots": lots,
-            "computed": computed,
-            "dateFrom": date_from.isoformat() if date_from else None,
-            "dateTo": date_to.isoformat() if date_to else None,
-            "computedAt": computed_at.isoformat() if computed_at else None,
-            "job": job_state(name),
-        }
-        for name, lots, computed, date_from, date_to, computed_at in rows
+        delete(LotModel).where(LotModel.lot_id.in_(dataset_lots)),
+        delete(AnnouncementModel).where(AnnouncementModel.dataset == dataset),
     ]
 
 
-def load_lots(conn, dataset: str) -> list[dict]:
-    columns = ["lot_id", "publish_date", "start_price", "subject", "is_smp", "customer_inn",
-               "is_eshop", "groups", "main_group", "items", "computed_at"]
-    return [dict(zip(columns, row)) for row in conn.execute(LOTS_SQL, {"dataset": dataset})]
+def list_batches() -> list[dict]:
+    with database.session() as session:
+        rows = [dict(row) for row in session.execute(batches_stmt()).mappings()]
+    return [
+        {
+            "name": row["dataset"],
+            "lots": row["lots"],
+            "computed": row["computed"],
+            "dateFrom": row["date_from"].isoformat() if row["date_from"] else None,
+            "dateTo": row["date_to"].isoformat() if row["date_to"] else None,
+            "computedAt": row["computed_at"].isoformat() if row["computed_at"] else None,
+            "job": job_state(row["dataset"]),
+        }
+        for row in rows
+    ]
+
+
+def load_lots(session: Session, dataset: str) -> list[dict]:
+    return [dict(row) for row in session.execute(lots_stmt(dataset)).mappings()]
 
 
 def lot_summary(lot: dict) -> dict:
@@ -135,19 +156,19 @@ def lot_summary(lot: dict) -> dict:
 
 
 def batch_lots(dataset: str) -> list[dict]:
-    with connect() as conn:
-        lots = load_lots(conn, dataset)
+    with database.session() as session:
+        lots = load_lots(session, dataset)
         for lot in lots:
             if lot["items"]:
-                fill_names(conn, lot["items"][:TOP_PREVIEW])
+                fill_names(session, lot["items"][:TOP_PREVIEW])
     return [lot_summary(lot) for lot in lots]
 
 
-def compute_lot(conn, lot: dict) -> list[dict]:
+def compute_lot(session: Session, lot: dict) -> list[dict]:
     if not lot["main_group"]:
         return []
     result = recommend(
-        conn,
+        session,
         lot["main_group"],
         lot["start_price"],
         eshop=lot["is_eshop"],
@@ -161,14 +182,14 @@ def compute_lot(conn, lot: dict) -> list[dict]:
 
 def run_compute(dataset: str) -> None:
     try:
-        with connect() as conn:
-            lots = load_lots(conn, dataset)
+        with database.session() as session:
+            lots = load_lots(session, dataset)
             _jobs[dataset] = {"status": "running", "done": 0, "total": len(lots)}
             missing_names: list[str] = []
             for index, lot in enumerate(lots, start=1):
-                items = compute_lot(conn, lot)
-                conn.execute(UPSERT_SQL, [lot["lot_id"], Jsonb(items)])
-                conn.commit()
+                items = compute_lot(session, lot)
+                session.execute(upsert_stmt(lot["lot_id"], items))
+                session.commit()
                 missing_names += [item["inn"] for item in items[:NAMES_PER_LOT] if item["name"].startswith("Компания ИНН")]
                 _jobs[dataset] = {"status": "running", "done": index, "total": len(lots)}
         _jobs[dataset] = {"status": "done", "done": len(lots), "total": len(lots)}
@@ -200,13 +221,14 @@ def upload_batch(name: str, files: list[tuple[str, bytes]]) -> dict:
         except ValueError as error:
             raise BatchError(str(error).replace(str(folder), "загруженных файлах")) from error
         sources["stg_bids"] = []
-        with connect() as conn:
-            load_sources(conn, sources, name, replace=False, with_classifier=False)
-            added = conn.execute("SELECT count(*) FROM announcements WHERE dataset = %s", [name]).fetchone()[0]
+        with database.session() as session:
+            load_sources(session, sources, name, replace=False, with_classifier=False)
+            added = session.execute(
+                select(func.count()).select_from(AnnouncementModel).where(AnnouncementModel.dataset == name)
+            ).scalar()
             if not added:
-                conn.rollback()
+                session.rollback()
                 raise BatchError("Все лоты из этих файлов уже загружены в другом пакете")
-            conn.commit()
     finally:
         shutil.rmtree(folder, ignore_errors=True)
     start_compute(name)
@@ -216,28 +238,27 @@ def upload_batch(name: str, files: list[tuple[str, bytes]]) -> dict:
 def delete_batch(dataset: str) -> None:
     if dataset == HISTORY_DATASET:
         raise BatchError("Исторические данные удалить нельзя")
-    with connect() as conn:
-        for sql in DELETE_SQL:
-            conn.execute(sql, {"dataset": dataset})
-        conn.commit()
+    with database.session() as session:
+        for stmt in delete_stmts(dataset):
+            session.execute(stmt)
     _jobs.pop(dataset, None)
 
 
 def lot_variants(lot_id: int) -> dict | None:
-    with connect() as conn:
-        row = conn.execute("SELECT items FROM lot_recommendations WHERE lot_id = %s", [lot_id]).fetchone()
+    with database.session() as session:
+        row = session.execute(select(LotRecommendationModel.items).where(LotRecommendationModel.lot_id == lot_id)).first()
         if row is None:
             return None
-        return {"items": fill_names(conn, row[0])}
+        return {"items": fill_names(session, row[0])}
 
 
 def export_csv(dataset: str, top: int = TOP_EXPORT) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";")
     writer.writerow(EXPORT_COLUMNS)
-    with connect() as conn:
-        for lot in load_lots(conn, dataset):
-            items = fill_names(conn, (lot["items"] or [])[:top])
+    with database.session() as session:
+        for lot in load_lots(session, dataset):
+            items = fill_names(session, (lot["items"] or [])[:top])
             for rank, item in enumerate(items, start=1):
                 writer.writerow([
                     lot["lot_id"], lot["publish_date"].isoformat(), lot["subject"], lot["customer_inn"],

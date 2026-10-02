@@ -3,9 +3,12 @@ import re
 import time
 import json
 import httpx
-import psycopg
 from pathlib import Path
 from bs4 import BeautifulSoup
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
+from database import SuppliersModel
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -127,41 +130,34 @@ def detect_role(text: str) -> tuple[str, str]:
     return "supplier", "признаки роли не найдены"
 
 def save(
-    conn: psycopg.Connection,
+    session: Session,
     companies: list[dict],
     okpd: str | None,
 ) -> None:
-    with conn.cursor() as cur:
-        for company in companies:
-            cur.execute(
-                """
-                INSERT INTO suppliers (
-                    inn, kpp, name, sum_price, is_smp,
-                    okpds, source, site, role,
-                    role_reason, contacts
-                )
-                VALUES (
-                    %s, %s, %s, 0, false, %s,
-                    'web', %s, %s, %s, %s
-                )
-                ON CONFLICT (inn) DO NOTHING
-                """,
-                (
-                    company["inn"],
-                    company["kpp"],
-                    company["name"],
-                    [okpd] if okpd else [],
-                    company["site"],
-                    company["role"],
-                    company["role_reason"],
-                    json.dumps(
-                        company["contacts"],
-                        ensure_ascii=False,
-                    ),
-                ),
-            )
-
-    conn.commit()
+    if not companies:
+        return
+    rows = [
+        {
+            "inn": company["inn"],
+            "kpp": company["kpp"],
+            "name": company["name"],
+            "sum_price": 0,
+            "is_smp": False,
+            "okpds": [okpd] if okpd else [],
+            "source": "web",
+            "site": company["site"],
+            "role": company["role"],
+            "role_reason": company["role_reason"],
+            "contacts": json.dumps(company["contacts"], ensure_ascii=False),
+        }
+        for company in companies
+    ]
+    session.execute(
+        pg_insert(SuppliersModel)
+        .values(rows)
+        .on_conflict_do_nothing(index_elements=[SuppliersModel.inn])
+    )
+    session.commit()
 
 
 class Fetcher:

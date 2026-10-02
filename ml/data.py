@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from api.db import connect
+from database import database
 
 CACHE_DIR = Path(__file__).resolve().parent / ".cache"
 
@@ -34,9 +34,8 @@ def load(name: str, sql: str, refresh: bool = False) -> pd.DataFrame:
     if path.exists() and not refresh:
         return pd.read_pickle(path)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    with connect() as conn, conn.cursor() as cur:
-        cur.execute(sql)
-        frame = pd.DataFrame(cur.fetchall(), columns=[column.name for column in cur.description])
+    with database.session() as session:
+        frame = pd.read_sql_query(sql, session.connection())
     frame.to_pickle(path)
     return frame
 

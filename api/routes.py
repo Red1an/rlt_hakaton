@@ -19,9 +19,9 @@ from .batches import (
 )
 from .categories import category_name, list_categories
 from .enrichment import DEFAULT_LIMIT, enrichment_state, start_enrichment
-from .db import connect
 from .jobs import enrich_names
 from .recommend import fill_names, recommend
+from database import database
 
 router = APIRouter(prefix="/match")
 
@@ -44,8 +44,8 @@ class SearchRequest(BaseModel):
 
 @router.get("/categories")
 def categories(q: str = "") -> list[dict]:
-    with connect() as conn:
-        return list_categories(conn, q)
+    with database.session() as session:
+        return list_categories(session, q)
 
 
 @router.post("/search")
@@ -57,11 +57,11 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
     if request.nmck <= 0:
         raise HTTPException(422, "Укажите НМЦК")
 
-    with connect() as conn:
-        if category_name(conn, okpd) is None:
+    with database.session() as session:
+        if category_name(session, okpd) is None:
             raise HTTPException(422, f"Нет такой категории ОКПД2: {okpd}")
         result = recommend(
-            conn,
+            session,
             okpd,
             request.nmck,
             eshop=request.platform == "em",
@@ -84,8 +84,8 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
 @router.get("/variants")
 def variants(requestId: str | None = None) -> dict:
     items = _results.get(requestId or _last_request_id or "", [])
-    with connect() as conn:
-        return {"items": fill_names(conn, items)}
+    with database.session() as session:
+        return {"items": fill_names(session, items)}
 
 
 @router.get("/batches")
