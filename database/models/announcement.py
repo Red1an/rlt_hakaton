@@ -21,5 +21,6 @@ class AnnouncementModel(Base):
     customer_inn: Mapped[str] = mapped_column(String(12))
     customer_kpp: Mapped[str] = mapped_column(String(12))
     is_eshop_or_aisgz: Mapped[bool] = mapped_column(Boolean)
+    dataset: Mapped[str] = mapped_column(String(100), default="history", server_default="history", index=True)
 
     products: Mapped[list[LotModel]] = relationship(lazy="selectin")

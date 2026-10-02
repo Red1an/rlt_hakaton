@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
 
 // Абсолютный путь: scss-резолвер не знает про алиас "@".
-const stylesEntry = fileURLToPath(new URL("./src/assets/styles", import.meta.url));
+const stylesEntry = fileURLToPath(new URL("./src/assets/styles", import.meta.url)).replaceAll("\\", "/");
 
 // https://vite.dev/config/
 export default defineConfig({

@@ -10,7 +10,6 @@ _catalog: list[tuple[str, str]] | None = None
 def query_stems(query: str) -> list[str]:
     return [word[: max(4, len(word) - 2)] for word in re.findall(r"\w+", query.lower()) if len(word) >= 4]
 
-
 def detect_okpd(conn: psycopg.Connection, query: str) -> list[tuple[str, int]]:
     stems = query_stems(query)
     if not stems:

@@ -1,0 +1,342 @@
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1360px;
+}
+
+.card {
+    padding: 24px 26px 26px;
+    border: 1px solid $line;
+    border-radius: 14px;
+    background: $surface;
+    box-shadow: $shadow;
+}
+
+.title {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: $lh-tight;
+    color: $ink;
+}
+
+.lead {
+    margin: 0 0 20px;
+    color: $ink-2;
+}
+
+.upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+}
+
+.fieldName {
+    flex: 1 1 240px;
+}
+
+.label {
+    font-size: 13px;
+    font-weight: 500;
+    color: $ink-2;
+}
+
+.input {
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink;
+    outline: none;
+
+    &:focus {
+        border-color: $accent-line;
+    }
+}
+
+.fileInput {
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink-2;
+
+    &::file-selector-button {
+        height: 36px;
+        margin-right: 10px;
+        padding: 0 14px;
+        border: 1px solid $line-2;
+        border-radius: $radius-md;
+        background: $surface-2;
+        font-family: $font-sans;
+        color: $ink;
+        cursor: pointer;
+    }
+}
+
+%button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    padding: 0 16px;
+    border-radius: $radius-md;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
+}
+
+.primary {
+    @extend %button;
+    border: 1px solid $accent;
+    background: $accent;
+    color: $on-accent;
+
+    &:hover:not(:disabled) {
+        background: $accent-ink;
+    }
+}
+
+.secondary {
+    @extend %button;
+    border: 1px solid $line-2;
+    background: $surface;
+    color: $ink;
+
+    &:hover:not(:disabled) {
+        border-color: $accent-line;
+    }
+}
+
+.danger {
+    @extend %button;
+    border: 1px solid $line-2;
+    background: $surface;
+    color: $bad;
+
+    &:hover {
+        border-color: $bad;
+    }
+}
+
+.disabled {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.notice {
+    margin: 16px 0 0;
+    padding: 10px 12px;
+    border-radius: $radius-md;
+    white-space: pre-line;
+}
+
+.noticeOk {
+    background: $ok-bg;
+    color: $ok-fg;
+}
+
+.noticeBad {
+    background: $bad-bg;
+    color: $bad;
+}
+
+.batchHead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.batchTabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.batchTab {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 8px 14px;
+    border: 1px solid $line;
+    border-radius: $radius-md;
+    background: $surface-2;
+    font-family: $font-sans;
+    cursor: pointer;
+    text-align: left;
+}
+
+.batchTabActive {
+    border-color: $accent-line;
+    background: $accent-soft;
+}
+
+.batchName {
+    font-weight: 600;
+    color: $ink;
+}
+
+.batchMeta {
+    font-size: $fs-caption;
+    color: $ink-3;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.progress {
+    margin-bottom: 18px;
+}
+
+.progressText {
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: $ink-2;
+}
+
+.progressBar {
+    height: 6px;
+    border-radius: 3px;
+    background: $surface-3;
+    overflow: hidden;
+}
+
+.progressFill {
+    height: 100%;
+    background: $accent;
+    transition: width 0.3s ease;
+}
+
+.tableWrap {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+
+    th {
+        padding: 8px 10px;
+        border-bottom: 1px solid $line;
+        font-size: 12px;
+        font-weight: 500;
+        text-align: left;
+        color: $ink-3;
+        white-space: nowrap;
+    }
+
+    td {
+        padding: 12px 10px;
+        border-bottom: 1px solid $line;
+        vertical-align: top;
+    }
+
+    tr:last-child td {
+        border-bottom: none;
+    }
+}
+
+.mono {
+    font-family: $font-mono;
+    font-size: $fs-code;
+    white-space: nowrap;
+}
+
+.subject {
+    max-width: 520px;
+    font-weight: 500;
+    color: $ink;
+}
+
+.lotMeta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: $ink-3;
+}
+
+.chip {
+    padding: 1px 7px;
+    border-radius: $radius-sm;
+    background: $chip-bg;
+    font-family: $font-mono;
+    font-size: $fs-badge;
+    color: $ink-2;
+}
+
+.top {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+
+    li + li {
+        margin-top: 3px;
+    }
+}
+
+.topName {
+    color: $ink;
+}
+
+.topScore {
+    margin-left: 8px;
+    font-family: $font-mono;
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
+.muted {
+    color: $ink-3;
+}
+
+.detail {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.back {
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $accent-ink;
+    cursor: pointer;
+}
+
+.detailHead {
+    padding: 14px 16px;
+    border-radius: $radius-md;
+    background: $surface-2;
+}

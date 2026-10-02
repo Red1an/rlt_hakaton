@@ -95,3 +95,54 @@ export interface SupplierVariantDto {
 export interface VariantsResponseDto {
     items: SupplierVariantDto[];
 }
+
+export type BatchJobStatus = "idle" | "running" | "done" | "error";
+
+export interface BatchJobDto {
+    status: BatchJobStatus;
+    done?: number;
+    total?: number;
+    message?: string;
+}
+
+export interface BatchDto {
+    name: string;
+    lots: number;
+    computed: number;
+    dateFrom: string | null;
+    dateTo: string | null;
+    computedAt: string | null;
+    job: BatchJobDto;
+}
+
+export interface BatchLotTopDto {
+    inn: string;
+    name: string;
+    score: number;
+    novelty: VariantNovelty;
+}
+
+export interface BatchLotDto {
+    lotId: number;
+    publishDate: string;
+    subject: string;
+    customerInn: string;
+    nmck: number;
+    platform: "ais" | "em";
+    mspOnly: boolean;
+    categories: string[];
+    computed: boolean;
+    total: number;
+    top: BatchLotTopDto[];
+}
+
+export interface BatchLotsResponseDto {
+    name: string;
+    job: BatchJobDto;
+    lots: BatchLotDto[];
+}
+
+export interface BatchJobResponseDto {
+    name: string;
+    job: BatchJobDto;
+}

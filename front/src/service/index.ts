@@ -1,4 +1,6 @@
 export {
+    batchLotKey,
+    upsertBatchLot,
     lotIdFromValues,
     shortListCommentKey,
     upsertLot,
@@ -9,6 +11,7 @@ export {
     INITIAL_MATCH_VALUES,
     ROLE_LABELS,
     fetchCategories,
+    fetchLotVariants,
     fetchVariants,
     normalizeMatchValues,
     searchCategories,
@@ -28,3 +31,23 @@ export type {
     SupplierRole,
     SupplierVariant,
 } from "./matchService";
+export {
+    BATCH_EXPORT_TOP,
+    batchExportUrl,
+    deleteBatch,
+    fetchBatchLots,
+    fetchBatchStatus,
+    fetchBatches,
+    formatDate,
+    formatRub,
+    jobProgress,
+    recomputeBatch,
+    uploadBatch,
+} from "./batchService";
+
+export type {
+    Batch,
+    BatchJob,
+    BatchJobStatus,
+    BatchLot,
+} from "./batchService";

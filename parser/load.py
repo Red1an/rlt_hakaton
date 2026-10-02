@@ -7,7 +7,10 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
-from okpd import load_classifier
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from parser.okpd import load_classifier
 
 PARSER_DIR = Path(__file__).resolve().parent
 SQL_DIR = PARSER_DIR / "sql"
@@ -42,12 +45,20 @@ def read_header(path: Path) -> list[str]:
     return [column.strip().strip('"') for column in first_line.split(";")]
 
 
+OPTIONAL_TABLES = {"stg_bids"}
+HISTORY_DATASET = "history"
+
+
+class SourceError(ValueError):
+    pass
+
+
 def collect_sources(data_dir: Path) -> dict[str, list[Path]]:
     errors = []
     sources = {}
     for table, (prefix, expected_columns) in RAW_FILES.items():
         files = find_csv_files(data_dir, prefix)
-        if not files:
+        if not files and table not in OPTIONAL_TABLES:
             errors.append(f"нет файлов {prefix}*.csv")
         for path in files:
             header = read_header(path)
@@ -55,7 +66,7 @@ def collect_sources(data_dir: Path) -> dict[str, list[Path]]:
                 errors.append(f"{path.name}: колонки {header}, ожидались {expected_columns}")
         sources[table] = files
     if errors:
-        sys.exit(f"Проблемы с данными в {data_dir}:\n  " + "\n  ".join(errors))
+        raise SourceError(f"Проблемы с данными в {data_dir}:\n  " + "\n  ".join(errors))
     return sources
 
 
@@ -98,24 +109,52 @@ def check_tables(conn: psycopg.Connection) -> None:
         sys.exit(f"В базе нет таблиц: {', '.join(missing)}. Сначала создайте схему из database/models.")
 
 
+def load_sources(
+    conn: psycopg.Connection,
+    sources: dict[str, list[Path]],
+    dataset: str,
+    replace: bool,
+    with_classifier: bool = True,
+) -> None:
+    if replace:
+        run_sql_file(conn, "truncate.sql")
+    run_sql_file(conn, "staging.sql")
+    for table, files in sources.items():
+        for path in files:
+            copy_csv(conn, table, path)
+    if with_classifier:
+        print(f"Справочник ОКПД2: {load_classifier(conn)} кодов")
+    conn.execute("SELECT set_config('app.dataset', %s, true)", [dataset])
+    run_sql_file(conn, "load.sql")
+
+
 def main() -> None:
     load_dotenv(PARSER_DIR.parent / ".env")
     parser = argparse.ArgumentParser(description="Загрузка CSV организаторов в таблицы database/models")
     parser.add_argument("--data-dir", type=Path, default=os.getenv("DATA_DIR"))
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--append", action="store_true", help="дозагрузить лоты, не стирая историю")
+    mode.add_argument("--replace", action="store_true", help="стереть лоты, товары и заявки и загрузить заново")
+    parser.add_argument("--dataset", help="метка набора: history для истории, иначе имя пакета для подбора")
     args = parser.parse_args()
 
     if args.data_dir is None:
         sys.exit("Укажите папку с CSV: --data-dir или переменная DATA_DIR")
-    sources = collect_sources(Path(args.data_dir))
+    try:
+        sources = collect_sources(Path(args.data_dir))
+    except SourceError as error:
+        sys.exit(str(error))
+    has_bids = bool(sources["stg_bids"])
+    dataset = args.dataset or (HISTORY_DATASET if has_bids else Path(args.data_dir).name)
+    replace = args.replace or (has_bids and not args.append)
+    if not has_bids:
+        print("Файлов «Поставщики» нет: лоты и товары загружаются без заявок")
+    print("Режим: полная перезагрузка" if replace else "Режим: дозагрузка, история сохраняется")
+    print(f"Набор: {dataset}")
 
     with psycopg.connect(connection_info()) as conn:
         check_tables(conn)
-        run_sql_file(conn, "staging.sql")
-        for table, files in sources.items():
-            for path in files:
-                copy_csv(conn, table, path)
-        print(f"Справочник ОКПД2: {load_classifier(conn)} кодов")
-        run_sql_file(conn, "load.sql")
+        load_sources(conn, sources, dataset, replace)
         conn.commit()
 
 

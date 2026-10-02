@@ -23,7 +23,7 @@ EMPTY = "—"
 SIMILAR_LOTS_SQL = """
     CREATE TEMP TABLE similar_lots ON COMMIT DROP AS
     SELECT s.lot_id, count(b.supplier_inn) AS participants
-    FROM (SELECT DISTINCT lot_id FROM lots WHERE okpd_code LIKE %(prefix)s) s
+    FROM (SELECT DISTINCT lot_id FROM lots WHERE okpd_code LIKE ANY(%(prefixes)s)) s
     JOIN bids b ON b.lot_id = s.lot_id
     GROUP BY s.lot_id
 """
@@ -60,7 +60,10 @@ NEW_SQL = """
     SELECT inn, kpp, name, role, role_reason, site, contacts
     FROM suppliers
     WHERE source = 'web'
-      AND EXISTS (SELECT 1 FROM unnest(okpds) code WHERE code LIKE %(prefix)s OR %(okpd)s LIKE code || '%%')
+      AND EXISTS (
+          SELECT 1 FROM unnest(okpds) code, unnest(%(codes)s::text[]) wanted
+          WHERE code LIKE wanted || '%%' OR wanted LIKE code || '%%'
+      )
 """
 
 LOT_HISTORY_SQL = """
@@ -370,6 +373,9 @@ def scale(scores: list[float]) -> list[int]:
     return [round(100 * (score - low) / (high - low)) for score in scores]
 
 
+HISTORY_END_SQL = "SELECT max(publish_date) FROM announcements WHERE dataset = 'history'"
+
+
 def recommend(
     conn: psycopg.Connection,
     okpd: str,
@@ -378,9 +384,12 @@ def recommend(
     msp_only: bool = False,
     customer_inn: str | None = None,
     limit: int = 30,
+    extra_codes: list[str] | None = None,
+    lot_date: date | None = None,
 ) -> dict:
-    params = {"prefix": f"{okpd}%", "okpd": okpd, "customer": customer_inn}
-    lot_date = conn.execute("SELECT max(publish_date) FROM announcements").fetchone()[0] + timedelta(days=1)
+    codes = [okpd] + [code for code in extra_codes or [] if code != okpd]
+    params = {"prefixes": [f"{code}%" for code in codes], "codes": codes, "customer": customer_inn}
+    lot_date = lot_date or conn.execute(HISTORY_END_SQL).fetchone()[0] + timedelta(days=1)
     lot = {"okpd": okpd, "nmck": float(nmck or 0), "eshop": eshop, "smp": msp_only, "customer": customer_inn}
     conn.execute(SIMILAR_LOTS_SQL, params)
 

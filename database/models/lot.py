@@ -13,6 +13,7 @@ class LotModel(Base):
         Integer,
         ForeignKey("announcements.lot_id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     product_name: Mapped[str] = mapped_column(TEXT)
     okpd_code: Mapped[str | None] = mapped_column(

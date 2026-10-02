@@ -1,5 +1,3 @@
-TRUNCATE bids, lots, announcements RESTART IDENTITY;
-
 INSERT INTO okpd (code, name)
 SELECT code, mode() WITHIN GROUP (ORDER BY product_name)
 FROM (
@@ -14,7 +12,7 @@ ON CONFLICT (code) DO UPDATE SET name = coalesce(okpd.name, EXCLUDED.name);
 
 INSERT INTO announcements (
     lot_id, procedure_name, publish_date, start_price, subject,
-    is_smp, customer_inn, customer_kpp, is_eshop_or_aisgz
+    is_smp, customer_inn, customer_kpp, is_eshop_or_aisgz, dataset
 )
 SELECT DISTINCT ON (lot_id)
     lot_id,
@@ -25,7 +23,8 @@ SELECT DISTINCT ON (lot_id)
     coalesce(is_smp, false),
     coalesce(customer_inn, ''),
     coalesce(customer_kpp, ''),
-    platform = 'ЭМ'
+    platform = 'ЭМ',
+    current_setting('app.dataset')
 FROM (
     SELECT
         pg_temp.clean_text(lot_id)::int            AS lot_id,
@@ -40,7 +39,8 @@ FROM (
     FROM stg_lots
 ) l
 WHERE lot_id IS NOT NULL AND publish_date IS NOT NULL
-ORDER BY lot_id, publish_date DESC;
+ORDER BY lot_id, publish_date DESC
+ON CONFLICT (lot_id) DO NOTHING;
 
 INSERT INTO lots (lot_id, product_name, okpd_code)
 SELECT p.lot_id, coalesce(p.product_name, ''), p.okpd_code
@@ -51,7 +51,8 @@ FROM (
         pg_temp.clean_text(okpd2_code)    AS okpd_code
     FROM stg_products
 ) p
-WHERE EXISTS (SELECT 1 FROM announcements a WHERE a.lot_id = p.lot_id);
+WHERE EXISTS (SELECT 1 FROM announcements a WHERE a.lot_id = p.lot_id)
+  AND NOT EXISTS (SELECT 1 FROM lots existing WHERE existing.lot_id = p.lot_id);
 
 INSERT INTO suppliers (inn, kpp, sum_price, is_smp, okpds)
 SELECT inn, mode() WITHIN GROUP (ORDER BY kpp), 0, false, '{}'
@@ -76,6 +77,7 @@ FROM (
 ) b
 WHERE EXISTS (SELECT 1 FROM announcements a WHERE a.lot_id = b.lot_id)
   AND EXISTS (SELECT 1 FROM suppliers s WHERE s.inn = b.inn)
-GROUP BY b.lot_id, b.inn;
+GROUP BY b.lot_id, b.inn
+ON CONFLICT (lot_id, supplier_inn) DO NOTHING;
 
 ANALYZE okpd, announcements, lots, suppliers, bids;

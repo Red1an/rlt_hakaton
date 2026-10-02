@@ -4,6 +4,7 @@ from .lot import LotModel
 from .suppliers import SuppliersModel
 from .announcement import AnnouncementModel
 from .bid import BidModel
+from .recommendation import LotRecommendationModel
 
 __all__ = [
     "Base",
@@ -13,4 +14,5 @@ __all__ = [
     "SuppliersModel",
     "AnnouncementModel",
     "BidModel",
+    "LotRecommendationModel",
 ]

@@ -14,6 +14,7 @@ ENV PYTHONPATH=/app:/database
 COPY ./api ./api
 COPY ./database ./database
 COPY ./worker ./worker
+COPY ./parser ./parser
 COPY ./ml/model ./ml/model
 
 CMD ["fastapi", "run", "api/main.py", "--port", "80"]

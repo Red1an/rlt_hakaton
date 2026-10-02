@@ -23,10 +23,14 @@ export class ApiError extends Error {
 
 apiClient.interceptors.response.use(
     (response) => response,
-    (error: AxiosError<{ message?: string }>) => {
+    (error: AxiosError<{ message?: string; detail?: unknown }>) => {
         if (error.response) {
+            const {
+                detail, message,
+            } = error.response.data ?? {};
+
             return Promise.reject(new ApiError(
-                error.response.data?.message ?? "Ошибка запроса",
+                typeof detail === "string" ? detail : message ?? "Ошибка запроса",
                 error.response.status,
             ));
         }

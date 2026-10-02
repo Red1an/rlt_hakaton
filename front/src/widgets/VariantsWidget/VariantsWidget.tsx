@@ -291,13 +291,14 @@ function VariantDrawer({
 interface VariantsWidgetProps {
     /** Идентификатор выдачи активного лота: без него сервер отдаёт последний поиск. */
     requestId?: string;
+    lotId?: number;
     /** Список id поставщиков, которые уже в шорт-листе активного лота. */
     shortListIds: string[];
     onToggleShortList: (id: string) => void;
 }
 
 export default function VariantsWidget({
-    requestId, shortListIds, onToggleShortList,
+    requestId, lotId, shortListIds, onToggleShortList,
 }: VariantsWidgetProps) {
     const [ variants, setVariants ] = useState<SupplierVariant[]>([]);
     const [ isLoading, setIsLoading ] = useState(true);
@@ -308,7 +309,11 @@ export default function VariantsWidget({
     useEffect(() => {
         let isAlive = true;
 
-        matchService.fetchVariants(requestId)
+        const request = lotId === undefined
+            ? matchService.fetchVariants(requestId)
+            : matchService.fetchLotVariants(lotId);
+
+        request
             .then((items) => {
                 if (!isAlive) {
                     return;
@@ -331,7 +336,7 @@ export default function VariantsWidget({
         return () => {
             isAlive = false;
         };
-    }, [ requestId ]);
+    }, [ requestId, lotId ]);
 
     /** Счётчики считаем по полному списку, а не по уже отфильтрованному. */
     const roleCounts = useMemo(() => {

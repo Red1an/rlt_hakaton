@@ -1,5 +1,8 @@
+import * as batchApi from "../api/batches";
 import * as matchApi from "../api/match";
-import type { SupplierRole } from "../api/types";
+import type {
+    SupplierRole, SupplierVariantDto,
+} from "../api/types";
 
 export type { SupplierRole } from "../api/types";
 
@@ -45,6 +48,8 @@ export interface ProcurementLot {
     values: MatchFormValues;
     /** Идентификатор выдачи бэкенда: по нему грузится список вариантов. */
     requestId?: string;
+    batchName?: string;
+    batchLotId?: number;
 }
 
 /** Запись шорт-листа: поставщик, отобранный в конкретном лоте. */
@@ -195,13 +200,8 @@ function formatMoney(value: number): string {
     return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-/** Список поставщиков-вариантов, нормализованный для UI. */
-export async function fetchVariants(requestId?: string): Promise<SupplierVariant[]> {
-    const items = await matchApi.fetchVariants(
-        requestId === undefined || requestId.length === 0 ? {} : { requestId },
-    );
-
-    return items.map((item) => ({
+function toVariant(item: SupplierVariantDto): SupplierVariant {
+    return {
         id: item.id,
         name: item.name,
         inn: item.inn,
@@ -262,5 +262,18 @@ export async function fetchVariants(requestId?: string): Promise<SupplierVariant
             customer: row.customer,
             won: row.won,
         })),
-    }));
+    };
+}
+
+/** Список поставщиков-вариантов, нормализованный для UI. */
+export async function fetchVariants(requestId?: string): Promise<SupplierVariant[]> {
+    const items = await matchApi.fetchVariants(
+        requestId === undefined || requestId.length === 0 ? {} : { requestId },
+    );
+
+    return items.map(toVariant);
+}
+
+export async function fetchLotVariants(lotId: number): Promise<SupplierVariant[]> {
+    return (await batchApi.fetchLotVariants(lotId)).map(toVariant);
 }

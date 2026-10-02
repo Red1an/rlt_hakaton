@@ -1,3 +1,4 @@
+import type { BatchLot } from "./batchService";
 import type {
     MatchFormValues, ProcurementLot,
 } from "./matchService";
@@ -91,4 +92,38 @@ export function upsertLot(
             requestId,
         },
     ];
+}
+export function batchLotKey(lotId: number): string {
+    return `batch-${ lotId }`;
+}
+
+export function upsertBatchLot(lots: ProcurementLot[], batchName: string, lot: BatchLot): ProcurementLot[] {
+    const id = batchLotKey(lot.lotId);
+    const nmck = Math.round(lot.nmck).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    const code = lot.categories[0] ?? "";
+    const entry: ProcurementLot = {
+        id,
+        num: `№ ${ lot.lotId }`,
+        title: lot.subject.length > LOT_TITLE_LIMIT ? `${ lot.subject.slice(0, LOT_TITLE_LIMIT) }…` : lot.subject,
+        nmck,
+        values: {
+            category: code === ""
+                ? null
+                : {
+                    code,
+                    name: code,
+                    label: code,
+                },
+            nmck,
+            platform: lot.platform,
+            mspOnly: lot.mspOnly,
+            customerInn: lot.customerInn,
+        },
+        batchName,
+        batchLotId: lot.lotId,
+    };
+
+    return lots.some((item) => item.id === id)
+        ? lots.map((item) => (item.id === id ? entry : item))
+        : [ ...lots, entry ];
 }

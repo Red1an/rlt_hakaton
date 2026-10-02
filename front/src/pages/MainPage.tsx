@@ -2,12 +2,13 @@ import { useState } from "react";
 
 import usePersistentState from "@/hooks/usePersistentState";
 import {
-    INITIAL_MATCH_STATE, lotIdFromValues, normalizeMatchValues,
-    shortListCommentKey, upsertLot,
+    INITIAL_MATCH_STATE, batchLotKey, lotIdFromValues, normalizeMatchValues,
+    shortListCommentKey, upsertBatchLot, upsertLot,
 } from "@/service";
 import type {
-    MatchFormState, MatchFormValues, ProcurementLot, ShortListEntry,
+    BatchLot, MatchFormState, MatchFormValues, ProcurementLot, ShortListEntry,
 } from "@/service";
+import BatchWidget from "@/widgets/BatchWidget/BatchWidget";
 import MatchFormWidget from "@/widgets/MatchFormWidget/MatchFormWidget";
 import ShortListWidget from "@/widgets/ShortListWidget/ShortListWidget";
 import SidebarWidget from "@/widgets/SidebarWidget/SidebarWidget";
@@ -66,6 +67,8 @@ export default function MainPage() {
     const [ activeLotId, setActiveLotId ] = usePersistentState("activeLot", "");
     const [ entries, setEntries ] = usePersistentState<ShortListEntry[]>("shortlist", [], isArray);
     const [ comments, setComments ] = usePersistentState<Comments>("comments", {}, isPlainObject);
+    const [ batchName, setBatchName ] = usePersistentState("batch", "");
+    const [ batchLotId, setBatchLotId ] = usePersistentState<number | null>("batchLot", null);
 
     function handleNavigate(next: SidebarScreen) {
         // Выдачу не прячем: кнопка возврата из шорт-листа должна вернуть к тому же подбору.
@@ -86,6 +89,14 @@ export default function MainPage() {
 
     /** Возврат из шорт-листа в подбор с параметрами лота. */
     function handleOpenLot(lot: ProcurementLot) {
+        if (lot.batchLotId !== undefined) {
+            setBatchName(lot.batchName ?? "");
+            setBatchLotId(lot.batchLotId);
+            setScreen("batch");
+
+            return;
+        }
+
         setMatch((prev) => ({
             ...prev,
             values: lot.values,
@@ -96,12 +107,6 @@ export default function MainPage() {
         setScreen("match");
     }
 
-    function isInShortList(supplierId: string): boolean {
-        return entries.some((entry) => (
-            entry.lotId === activeLotId && entry.supplierId === supplierId
-        ));
-    }
-
     function removeFromShortList(lotId: string, supplierId: string) {
         setEntries((prev) => prev.filter((entry) => (
             entry.lotId !== lotId || entry.supplierId !== supplierId
@@ -109,9 +114,11 @@ export default function MainPage() {
         setComments((prev) => omitComment(prev, lotId, supplierId));
     }
 
-    function toggleShortList(supplierId: string) {
-        if (isInShortList(supplierId)) {
-            removeFromShortList(activeLotId, supplierId);
+    function toggleEntry(lotId: string, supplierId: string) {
+        const exists = entries.some((entry) => entry.lotId === lotId && entry.supplierId === supplierId);
+
+        if (exists) {
+            removeFromShortList(lotId, supplierId);
 
             return;
         }
@@ -119,10 +126,19 @@ export default function MainPage() {
         setEntries((prev) => [
             ...prev,
             {
-                lotId: activeLotId,
+                lotId,
                 supplierId,
             },
         ]);
+    }
+
+    function toggleShortList(supplierId: string) {
+        toggleEntry(activeLotId, supplierId);
+    }
+
+    function toggleBatchShortList(lot: BatchLot, supplierId: string) {
+        setLots((prev) => upsertBatchLot(prev, batchName, lot));
+        toggleEntry(batchLotKey(lot.lotId), supplierId);
     }
 
     function setComment(lotId: string, supplierId: string, text: string) {
@@ -136,6 +152,12 @@ export default function MainPage() {
     const activeShortListIds = entries
         .filter((entry) => entry.lotId === activeLotId)
         .map((entry) => entry.supplierId);
+
+    const batchShortListIds = batchLotId === null
+        ? []
+        : entries
+            .filter((entry) => entry.lotId === batchLotKey(batchLotId))
+            .map((entry) => entry.supplierId);
 
     /** Выдача активного лота: по requestId бэкенд отдаёт именно его подбор. */
     const activeLot = lots.find((lot) => lot.id === activeLotId);
@@ -166,6 +188,15 @@ export default function MainPage() {
                             />
                         ) }
                     </>
+                ) : screen === "batch" ? (
+                    <BatchWidget
+                        selectedBatch={ batchName }
+                        onSelectBatch={ setBatchName }
+                        openLotId={ batchLotId }
+                        onOpenLot={ setBatchLotId }
+                        shortListIds={ batchShortListIds }
+                        onToggleShortList={ toggleBatchShortList }
+                    />
                 ) : screen === "short" ? (
                     <ShortListWidget
                         lots={ lots }

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import styles from "./SidebarWidget.module.scss";
 
-export type SidebarScreen = "match" | "short";
+export type SidebarScreen = "match" | "batch" | "short";
 
 interface SidebarItem {
     screen: SidebarScreen;
@@ -24,6 +24,11 @@ const NAV_ITEMS: SidebarItem[] = [
         screen: "match",
         label: "Подбор",
         iconId: "nav-match",
+    },
+    {
+        screen: "batch",
+        label: "Пакетный подбор",
+        iconId: "nav-market",
     },
     {
         screen: "short",
