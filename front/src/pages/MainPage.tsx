@@ -1,5 +1,10 @@
-import { useState } from "react";
+import {
+    Navigate, useLocation, useNavigate,
+} from "react-router-dom";
 
+import {
+    SCREEN_PATHS, screenFromPath,
+} from "@/configs/RoutesConst";
 import usePersistentState from "@/hooks/usePersistentState";
 import {
     INITIAL_MATCH_STATE, batchLotKey, lotIdFromValues, normalizeMatchValues,
@@ -57,7 +62,16 @@ function normalizeLots(saved: ProcurementLot[]): ProcurementLot[] {
 }
 
 export default function MainPage() {
-    const [ screen, setScreen ] = useState<SidebarScreen>( "match" );
+    const location = useLocation();
+    const navigate = useNavigate();
+    const screen = screenFromPath(location.pathname);
+
+    function setScreen(next: SidebarScreen) {
+        if (next !== screen) {
+            navigate(SCREEN_PATHS[next]);
+        }
+    }
+
     const [ match, setMatch ] = usePersistentState<MatchFormState>(
         "match", INITIAL_MATCH_STATE, undefined, normalizeMatch,
     );
@@ -115,6 +129,11 @@ export default function MainPage() {
         setComments((prev) => omitComment(prev, lotId, supplierId));
     }
 
+    function clearShortList() {
+        setEntries([]);
+        setComments({});
+    }
+
     function toggleEntry(lotId: string, supplierId: string) {
         const exists = entries.some((entry) => entry.lotId === lotId && entry.supplierId === supplierId);
 
@@ -163,6 +182,10 @@ export default function MainPage() {
     /** Выдача активного лота: по requestId бэкенд отдаёт именно его подбор. */
     const activeLot = lots.find((lot) => lot.id === activeLotId);
 
+    if (screen === null) {
+        return <Navigate to={ SCREEN_PATHS.match } replace />;
+    }
+
     return (
         <div className={styles.page}>
             <SidebarWidget
@@ -206,6 +229,7 @@ export default function MainPage() {
                         entries={ entries }
                         comments={ comments }
                         onRemove={ removeFromShortList }
+                        onClear={ clearShortList }
                         onComment={ setComment }
                         onOpenLot={ handleOpenLot }
                         onBackToMatch={ handleBackToMatch }

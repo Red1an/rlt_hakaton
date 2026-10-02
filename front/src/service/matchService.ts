@@ -13,7 +13,7 @@ export interface OkpdCategory {
     label: string;
 }
 
-export type MatchPlatform = "ais" | "em";
+export type MatchPlatform = "all" | "ais" | "em";
 
 /** Значения формы «Что вы закупаете?». */
 export interface MatchFormValues {
@@ -61,7 +61,7 @@ export interface ShortListEntry {
 export const INITIAL_MATCH_VALUES: MatchFormValues = {
     category: null,
     nmck: "",
-    platform: "em",
+    platform: "all",
     mspOnly: false,
     customerInn: "",
 };
@@ -126,6 +126,7 @@ export interface SupplierVariant {
     score: number;
     scoreKind: ScoreKind;
     lift: number | null;
+    participation: number | null;
     part: number;
     wins: number;
     last: string;
@@ -144,6 +145,7 @@ export interface SupplierVariant {
 let categoriesCache: OkpdCategory[] | null = null;
 
 const PLATFORM_LABELS: Record<MatchPlatform, string> = {
+    all: "все площадки",
     ais: "АИС ГЗ",
     em: "Электронный магазин",
 };
@@ -204,7 +206,9 @@ export async function submitSearch(values: MatchFormValues): Promise<MatchSearch
     return {
         requestId: result.requestId,
         total: result.total,
-        message: `Подбор завершён: найдено ${ result.total } поставщиков по площадке «${ PLATFORM_LABELS[values.platform] }»`,
+        message: `Подбор завершён: найдено ${ result.total } поставщиков ${
+            values.platform === "all" ? "по всем площадкам" : `по площадке «${ PLATFORM_LABELS[values.platform] }»`
+        }`,
     };
 }
 
@@ -224,6 +228,7 @@ function toVariant(item: SupplierVariantDto): SupplierVariant {
         score: item.score,
         scoreKind: item.scoreKind ?? (item.novelty === "new" ? "new" : "relative"),
         lift: item.lift ?? null,
+        participation: item.participation ?? null,
         part: item.part,
         wins: item.wins,
         last: item.last,

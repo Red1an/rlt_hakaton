@@ -19,7 +19,7 @@ export interface FetchCategoriesParams {
 export interface SearchSuppliersRequestDto {
     category: string;
     nmck: number;
-    platform: "ais" | "em";
+    platform: "ais" | "em" | "all";
     mspOnly: boolean;
     /** ИНН заказчика: пустое поле равносильно его отсутствию. */
     customerInn?: string;
@@ -74,11 +74,13 @@ export interface SupplierVariantDto {
     flags: string[];
     novelty: VariantNovelty;
     role: SupplierRole;
-    /** При scoreKind = suitability — подходимость 0–100 по общей шкале, иначе относительная оценка в выдаче. */
+    /** При scoreKind = suitability — шанс подать заявку и выиграть 0–100, при new — оценка профиля, иначе относительная оценка в выдаче. */
     score: number;
     scoreKind?: ScoreKind;
-    /** Во сколько раз чаще среднего кандидата такие компании подают заявки. */
+    /** Во сколько раз шанс победы выше, чем у среднего кандидата. */
     lift?: number | null;
+    /** Вероятность подать заявку, %. */
+    participation?: number | null;
     /** Участий в похожих лотах. */
     part: number;
     /** Побед в похожих лотах. */

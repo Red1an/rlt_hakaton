@@ -5,6 +5,33 @@
     max-width: 1360px;
 }
 
+.head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.clearBtn {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid $line-2;
+    border-radius: $radius-md;
+    background: $surface;
+    color: $ink-2;
+    font-family: $font-sans;
+    font-size: $fs-caption;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+
+    &:hover {
+        background: $surface-3;
+        color: $ink;
+    }
+}
+
 .title {
     margin: 0;
     font-size: 26px;

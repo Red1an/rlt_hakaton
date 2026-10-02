@@ -17,6 +17,10 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const PLATFORM_OPTIONS: Array<{ value: MatchPlatform; label: string }> = [
     {
+        value: "all",
+        label: "Все",
+    },
+    {
         value: "ais",
         label: "АИС ГЗ",
     },
@@ -247,9 +251,9 @@ export default function MatchFormWidget({
 
     // После подбора форма схлопывается в строку-сводку с кнопкой «Изменить запрос».
     if (isCollapsed) {
-        const platformLabel = PLATFORM_OPTIONS.find(
-            (option) => option.value === values.platform,
-        )?.label ?? "";
+        const platformLabel = values.platform === "all"
+            ? "Все площадки"
+            : PLATFORM_OPTIONS.find((option) => option.value === values.platform)?.label ?? "";
 
         return (
             <section className={styles.summary}>

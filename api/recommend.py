@@ -13,12 +13,30 @@ LOCAL_REGIONS = {"78": "Из Санкт-Петербурга", "47": "Из Ле�
 REGION_NAMES = {"78": "Санкт-Петербург", "47": "Ленинградская область"}
 ROLE_CODES = {"manufacturer": "man", "distributor": "dist", "supplier": "sup"}
 STATUS_FLAGS = {"LIQUIDATING": "Ликвидируется", "REORGANIZING": "Реорганизация"}
-NEW_ROLE_SCORES = {"man": 60, "dist": 55, "sup": 50}
+NEW_ROLE_REASONS = {
+    "man": ["🏭", "Производитель: можно закупать напрямую, без посредников"],
+    "dist": ["📦", "Оптовая торговля: поставка со склада"],
+}
+NEW_ROLE_POINTS = {"man": 15, "dist": 10, "sup": 5}
+NEW_STATUS_POINTS = {"ACTIVE": 10, None: 5}
+NEW_CODE_POINTS = 20
+NEW_OKVED_POINTS = {4: 15, 2: 7}
+NEW_REGION_POINTS = 10
+NEW_SITE_POINTS = 5
+NEW_CONTACTS_POINTS = 5
+NEW_AGE_POINTS = 10
+NEW_MATURE_YEARS = 25
+NEW_BRANCH_POINTS = 5
+NEW_STAFF_POINTS = 10
+NEW_STAFF_LARGE = 100
+WIN_PRIOR_WINS = 1
+WIN_PRIOR_BIDS = 5
+WIN_FLOOR = 0.001
 PLATFORM_LABELS = {True: "Электронный магазин", False: "АИС ГЗ"}
 TOP_BY_WINS = 50
 TOP_BY_RECENCY = 50
 CONTENDER_SLOTS = 5
-CONTENDER_MIN_SCORE = 40
+CONTENDER_MIN_PARTICIPATION = 10
 SUITABILITY_FLOOR = 0.005
 HISTORY_ROWS = 5
 REASONS_SHOWN = 3
@@ -67,7 +85,9 @@ CUSTOMER_BIDS_SQL = """
 """
 
 NEW_SQL = """
-    SELECT inn, kpp, name, role, role_reason, site, contacts, status, ogrn, okved_main, region_code, reg_date, enriched_at, source
+    SELECT inn, kpp, name, role, role_reason, site, contacts, status, ogrn, okved_main, region_code, reg_date, enriched_at, source, okpds, employees,
+        coalesce((dadata->'data'->>'branch_count')::int, (dadata->>'branch_count')::int, 0) AS branches,
+        (SELECT o.name FROM okpd o WHERE o.code = s.okved_main) AS okved_name
     FROM suppliers s
     WHERE source IN ('web', 'dadata')
       AND (s.status IS NULL OR s.status NOT IN ('LIQUIDATED', 'BANKRUPT'))
@@ -209,15 +229,6 @@ def flags_for(row: dict, is_msp: bool) -> list[str]:
     return flags
 
 
-def company_age(reg_date: date | None, today: date) -> str | None:
-    if reg_date is None:
-        return None
-    years = (today - reg_date).days // 365
-    if years < 1:
-        return "Компания зарегистрирована меньше года назад"
-    return f"Компании {years} {plural(years, 'год', 'года', 'лет')}"
-
-
 def group_text(group: str, positive: bool, row: dict, lot: dict, values: dict[str, float]) -> str | None:
     platform = PLATFORM_LABELS[lot["eshop"]]
     share = round(100 * values["platform_share"])
@@ -302,7 +313,7 @@ def explain(row: dict, lot: dict, impacts: dict[str, float] | None) -> tuple[lis
     contender = is_contender(row)
     why = []
     if contender:
-        why.append(["↻", f"В конкурентных закупках: {bids_word(row['comp_part'])}, побед только {row['comp_wins']}: готов конкурировать"])
+        why.append(["↻", f"Часто участвует, но редко выигрывает: {bids_word(row['comp_part'])}, побед {row['comp_wins']}. Добавит конкуренции"])
     if row["days"] > 180:
         why.append(["💤", f"Последняя заявка {ago(row['days'])}, стоит напомнить о закупке"])
 
@@ -339,13 +350,27 @@ def needs_check(item: dict) -> bool:
     return item["name"].startswith("Компания ИНН")
 
 
-def suitability(probability: float, ceiling: float) -> int:
-    share = math.log(max(probability, SUITABILITY_FLOOR) / SUITABILITY_FLOOR) / math.log(ceiling / SUITABILITY_FLOOR)
+def suitability(probability: float, ceiling: float, floor: float = SUITABILITY_FLOOR) -> int:
+    share = math.log(max(probability, floor) / floor) / math.log(ceiling / floor)
     return round(100 * min(max(share, 0.0), 1.0))
 
 
+def win_rate(row: dict) -> float:
+    return (row["comp_wins"] + WIN_PRIOR_WINS) / (row["comp_part"] + WIN_PRIOR_BIDS)
+
+
+def win_prior() -> float:
+    return WIN_PRIOR_WINS / WIN_PRIOR_BIDS
+
+
 def history_item(
-    row: dict, lot: dict, score: int, impacts: dict[str, float] | None, score_kind: str, lift: float | None
+    row: dict,
+    lot: dict,
+    score: int,
+    impacts: dict[str, float] | None,
+    score_kind: str,
+    lift: float | None,
+    participation: int | None,
 ) -> dict:
     why, factors = explain(row, lot, impacts)
     return {
@@ -358,6 +383,7 @@ def history_item(
         "score": score,
         "scoreKind": score_kind,
         "lift": lift,
+        "participation": participation,
         "part": row["comp_part"],
         "wins": row["comp_wins"],
         "direct": row["direct_cnt"],
@@ -375,16 +401,83 @@ def history_item(
     }
 
 
-def new_item(row: dict) -> dict:
+def code_match(supplier_codes: list[str], wanted_codes: list[str]) -> float:
+    best = 0.0
+    for code in supplier_codes or []:
+        for wanted in wanted_codes:
+            if code.startswith(wanted):
+                return 1.0
+            if wanted.startswith(code):
+                best = max(best, len(code.replace(".", "")) / len(wanted.replace(".", "")))
+    return best
+
+
+def has_contacts(contacts: str | None) -> bool:
+    if not contacts:
+        return False
+    try:
+        return bool(json.loads(contacts))
+    except ValueError:
+        return False
+
+
+def okved_points(okved: str | None, codes: list[str]) -> int:
+    digits = (okved or "").replace(".", "")
+    for length, points in NEW_OKVED_POINTS.items():
+        if len(digits) >= length and any(code.replace(".", "")[:length] == digits[:length] for code in codes):
+            return points
+    return 0
+
+
+def new_score(row: dict, codes: list[str], region: str) -> int:
+    role_code = ROLE_CODES.get(row["role"], "sup")
+    years = (date.today() - row["reg_date"]).days / 365 if row["reg_date"] else None
+    staff = row["employees"] or 0
+    score = (
+        NEW_CODE_POINTS * code_match(row["okpds"], codes)
+        + okved_points(row["okved_main"], codes)
+        + NEW_STAFF_POINTS * min(math.log1p(staff) / math.log1p(NEW_STAFF_LARGE), 1.0)
+        + NEW_ROLE_POINTS[role_code]
+        + NEW_STATUS_POINTS.get(row["status"], 0)
+        + (NEW_AGE_POINTS * min(math.log1p(years) / math.log1p(NEW_MATURE_YEARS), 1.0) if years is not None else NEW_AGE_POINTS / 2)
+        + (NEW_BRANCH_POINTS if row["branches"] else 0)
+        + (NEW_REGION_POINTS if region in LOCAL_REGIONS else 0)
+        + (NEW_SITE_POINTS if row["site"] else 0)
+        + (NEW_CONTACTS_POINTS if has_contacts(row["contacts"]) else 0)
+    )
+    return round(min(score, 100))
+
+
+def profile_text(row: dict, codes: list[str]) -> list[str] | None:
+    okved = row["okved_main"]
+    if not okved:
+        return None
+    activity = f"ОКВЭД {okved}" + (f" — {row['okved_name'].lower()}" if row["okved_name"] else "")
+    points = okved_points(okved, codes)
+    if points == max(NEW_OKVED_POINTS.values()):
+        return ["🎯", f"Основной вид деятельности совпадает с закупкой: {activity}"]
+    if points:
+        return ["🎯", f"Смежный профиль: {activity}"]
+    return ["🧭", f"Основной профиль другой ({activity}), категория среди дополнительных"]
+
+
+def reliability_text(row: dict) -> list[str]:
+    if row["status"] not in (None, "ACTIVE"):
+        return ["⚠", f"{STATUS_FLAGS.get(row['status'], row['status'])}: уточните, может ли компания заключить договор"]
+    if row["reg_date"] is None:
+        return ["✓", "Действующая компания"]
+    years = (date.today() - row["reg_date"]).days // 365
+    if years < 1:
+        return ["⚠", "Зарегистрирована меньше года назад: проверьте надёжность"]
+    branches = ", есть филиалы" if row["branches"] else ""
+    return ["✓", f"{years} {plural(years, 'год', 'года', 'лет')} на рынке, компания действующая{branches}"]
+
+
+def new_item(row: dict, codes: list[str]) -> dict:
     role_code = ROLE_CODES.get(row["role"], "sup")
     region = row["region_code"] or region_code(row["inn"], row["kpp"])
-    found_in = "в ЕГРЮЛ по основному ОКВЭД" if row["source"] == "dadata" else "в открытых источниках"
-    why = [["✦", f"Нет в истории госзакупок, найден {found_in}"]]
-    if row["role_reason"]:
-        why.append(["⚙", row["role_reason"]])
-    age = company_age(row["reg_date"], date.today())
-    status_text = "Действующая компания" if row["status"] in (None, "ACTIVE") else STATUS_FLAGS.get(row["status"], row["status"])
-    why.append(["✓", f"{status_text}, {REGION_NAMES.get(region, f'регион {region}')}" + (f". {age}" if age else "")])
+    why = [line for line in [profile_text(row, codes), NEW_ROLE_REASONS.get(role_code)] if line]
+    why.append(reliability_text(row))
     contacts = json.loads(row["contacts"]) if row["contacts"] else None
     return {
         "id": row["inn"],
@@ -393,7 +486,7 @@ def new_item(row: dict) -> dict:
         "flags": flags_for(row, False),
         "novelty": "new",
         "role": role_code,
-        "score": NEW_ROLE_SCORES[role_code],
+        "score": new_score(row, codes, region),
         "scoreKind": "new",
         "part": 0,
         "wins": 0,
@@ -447,7 +540,7 @@ def recommend(
     conn: psycopg.Connection,
     okpd: str,
     nmck: float | None = None,
-    eshop: bool = False,
+    eshop: bool | None = False,
     msp_only: bool = False,
     customer_inn: str | None = None,
     limit: int = 30,
@@ -471,30 +564,52 @@ def recommend(
 
     history = []
     if candidates:
+        variants = [{**lot, "eshop": value} for value in ((True, False) if eshop is None else (eshop,))]
         if model.model_available():
-            raw_scores, impacts = model.predict(candidates, lot)
-            raw_scores = list(raw_scores)
+            per_variant = [
+                (list(scores), impacts)
+                for scores, impacts in (model.predict(candidates, variant) for variant in variants)
+            ]
         else:
-            raw_scores, impacts = [formula_score(row, lot) for row in candidates], [None] * len(candidates)
+            per_variant = [
+                ([formula_score(row, variant) for row in candidates], [None] * len(candidates))
+                for variant in variants
+            ]
+        best = [
+            max(range(len(variants)), key=lambda index: per_variant[index][0][position])
+            for position in range(len(candidates))
+        ]
+        raw_scores = [per_variant[index][0][position] for position, index in enumerate(best)]
+        impacts = [per_variant[index][1][position] for position, index in enumerate(best)]
+        row_lots = [variants[index] for index in best]
+
         probabilities = model.participation(raw_scores) if model.model_available() else None
         if probabilities is None:
             scores, lifts, score_kind = scale(raw_scores), [None] * len(candidates), "relative"
+            participations = [None] * len(candidates)
+            order = raw_scores
         else:
             base_rate, ceiling = model.calibration_scale()
-            scores = [suitability(probability, ceiling) for probability in probabilities]
-            lifts = [round(probability / base_rate, 1) if base_rate else None for probability in probabilities]
+            expected = [probability * win_rate(row) for probability, row in zip(probabilities, candidates)]
+            scores = [suitability(value, ceiling * win_prior() * 2, WIN_FLOOR) for value in expected]
+            lifts = [round(value / (base_rate * win_prior()), 1) if base_rate else None for value in expected]
+            participations = [round(100 * probability) for probability in probabilities]
             score_kind = "suitability"
+            order = expected
         history = [
-            history_item(row, lot, score, impact, score_kind, lift)
-            for row, score, impact, lift, _ in sorted(
-                zip(candidates, scores, impacts, lifts, raw_scores),
-                key=lambda entry: entry[4],
+            history_item(row, row_lot, score, impact, score_kind, lift, participation)
+            for row, row_lot, score, impact, lift, participation, _ in sorted(
+                zip(candidates, row_lots, scores, impacts, lifts, participations, order),
+                key=lambda entry: entry[6],
                 reverse=True,
             )
         ]
 
     top, rest = history[: limit - CONTENDER_SLOTS], history[limit - CONTENDER_SLOTS:]
-    contenders = [item for item in rest if item["isContender"] and item["score"] >= CONTENDER_MIN_SCORE][:CONTENDER_SLOTS]
+    contenders = [
+        item for item in rest
+        if item["isContender"] and (item["participation"] or item["score"]) >= CONTENDER_MIN_PARTICIPATION
+    ][:CONTENDER_SLOTS]
     fill = [item for item in rest if item not in contenders][: limit - len(top) - len(contenders)]
     history = top + contenders + fill
 
@@ -510,7 +625,11 @@ def recommend(
         })
 
     with conn.cursor(row_factory=dict_row) as cur:
-        new = sorted((new_item(row) for row in cur.execute(NEW_SQL, params)), key=lambda item: item["score"], reverse=True)
+        new = sorted(
+            (new_item(row, codes) for row in cur.execute(NEW_SQL, params)),
+            key=lambda item: item["score"],
+            reverse=True,
+        )
     return {"okpd": okpd, "items": history + new, "model": model.model_available()}
 
 

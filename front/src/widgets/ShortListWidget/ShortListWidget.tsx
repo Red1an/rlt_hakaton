@@ -18,6 +18,7 @@ interface ShortListWidgetProps {
     /** Комментарии к записям: «lotId:supplierId» → текст. */
     comments: Record<string, string>;
     onRemove: (lotId: string, supplierId: string) => void;
+    onClear: () => void;
     onComment: (lotId: string, supplierId: string, text: string) => void;
     onOpenLot: (lot: ProcurementLot) => void;
     /** Обычный переход на «Подбор», когда лотов ещё нет. */
@@ -34,7 +35,7 @@ interface LotRow {
  * в разметке не показываем — только заголовок, таблица и возврат в подбор.
  */
 export default function ShortListWidget({
-    lots, entries, comments, onRemove, onComment, onOpenLot, onBackToMatch,
+    lots, entries, comments, onRemove, onClear, onComment, onOpenLot, onBackToMatch,
 }: ShortListWidgetProps) {
     const [ variants, setVariants ] = useState<SupplierVariant[]>([]);
     const [ isLoading, setIsLoading ] = useState(true);
@@ -96,9 +97,25 @@ export default function ShortListWidget({
 
     const hasAnyEntries = entries.length > 0;
 
+    function handleClear() {
+        const count = `${ entries.length } ${ plural(entries.length, "поставщика", "поставщиков", "поставщиков") }`;
+
+        if (window.confirm(`Убрать из шорт-листа ${ count } вместе с комментариями?`)) {
+            onClear();
+        }
+    }
+
     return (
         <div className={styles.screen}>
-            <h1 className={styles.title}>Шорт-лист</h1>
+            <div className={styles.head}>
+                <h1 className={styles.title}>Шорт-лист</h1>
+
+                { hasAnyEntries && (
+                    <button className={styles.clearBtn} type="button" onClick={ handleClear }>
+                        Очистить шорт-лист
+                    </button>
+                ) }
+            </div>
 
             { isLoading && <p className={styles.state}>Загружаем шорт-лист…</p> }
 

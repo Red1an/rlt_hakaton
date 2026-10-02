@@ -150,6 +150,46 @@
     min-width: 0;
 }
 
+.sections {
+    display: inline-flex;
+    gap: 2px;
+    margin-bottom: 14px;
+    padding: 2px;
+    border-radius: $radius-md;
+    background: $surface-3;
+}
+
+.section {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border: none;
+    border-radius: $radius-sm;
+    background: transparent;
+    font-family: $font-sans;
+    font-size: $fs-base;
+    color: $ink-2;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+
+    &:hover:not(.sectionActive) {
+        color: $ink;
+    }
+}
+
+.sectionActive {
+    background: $surface;
+    color: $ink;
+    box-shadow: 0 1px 2px oklch(0.2 0.02 255 / 0.08);
+}
+
+.sectionCount {
+    font-size: $fs-code;
+    color: $ink-3;
+}
+
 .cards {
     display: flex;
     flex-direction: column;
@@ -384,6 +424,12 @@
 .scoreMax {
     font-size: $fs-code;
     color: $ink-3;
+}
+
+.scoreLevel {
+    font-size: 22px;
+    font-weight: 600;
+    color: $ink;
 }
 
 .scoreBar {

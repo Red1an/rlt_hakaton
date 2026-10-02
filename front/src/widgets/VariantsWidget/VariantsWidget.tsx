@@ -16,38 +16,89 @@ import styles from "./VariantsWidget.module.scss";
 
 const ROLE_ORDER: SupplierRole[] = [ "man", "dist", "sup" ];
 
-const SUITABILITY_HINT = "Подходимость 0–100 — насколько компания похожа на тех, кто реально подаёт заявки "
-    + "на такие закупки. Шкала общая для всех поисков и проверена на закупках III квартала 2025 года";
+type Section = "history" | "new";
 
-function suitabilityHint(lift: number | null): string {
-    if (lift === null || lift < 1.05) {
-        return SUITABILITY_HINT;
+const SECTION_LABELS: Record<Section, string> = {
+    history: "По истории закупок",
+    new: "Новые, без истории",
+};
+
+const SECTION_EMPTY: Record<Section, string> = {
+    history: "Поставщиков с историей закупок в этой категории не нашлось",
+    new: "Новых поставщиков по этой категории пока нет: их можно найти в разделе «Новые поставщики»",
+};
+
+const SUITABILITY_HINT = "Релевантность 0–100 — шанс, что компания подаст заявку и выиграет: "
+    + "вероятность участия по модели, умноженная на долю побед в конкурентных закупках";
+
+const NEW_HINT = "Нет истории госзакупок. Совпадение с профилем: ОКПД2 и ОКВЭД с категорией, роль, "
+    + "статус и возраст компании, филиалы, регион, сайт и контакты";
+
+const PROFILE_LEVELS = [
+    {
+        min: 78,
+        label: "Сильное",
+        fill: 100,
+    },
+    {
+        min: 68,
+        label: "Среднее",
+        fill: 66,
+    },
+    {
+        min: 0,
+        label: "Слабое",
+        fill: 33,
+    },
+];
+
+function profileLevel(score: number) {
+    return PROFILE_LEVELS.find((level) => score >= level.min) ?? PROFILE_LEVELS[PROFILE_LEVELS.length - 1];
+}
+
+function suitabilityHint(lift: number | null, participation: number | null): string {
+    const parts = [ SUITABILITY_HINT ];
+
+    if (participation !== null) {
+        parts.push(`Вероятность подать заявку: ${ participation }%`);
     }
 
-    return `${ SUITABILITY_HINT }. Компании с такой оценкой подают заявки в ${
-        lift.toLocaleString("ru-RU") } раза чаще среднего кандидата`;
+    if (lift !== null && lift >= 1.05) {
+        parts.push(`Шанс победы в ${ lift.toLocaleString("ru-RU") } раза выше среднего кандидата`);
+    }
+
+    return parts.join(". ");
 }
 
 function ScoreBlock({ variant }: { variant: SupplierVariant }) {
     if (variant.scoreKind === "new") {
+        const level = profileLevel(variant.score);
+
         return (
             <>
-                <span className={styles.scoreLabel}>Подходимость</span>
+                <span className={styles.scoreLabel} title={ NEW_HINT }>Подходимость по профилю</span>
 
-                <div className={styles.scoreValue}>
-                    <span className={styles.scoreMax}>нет истории закупок</span>
+                <div className={styles.scoreValue} title={ NEW_HINT }>
+                    <span className={styles.scoreLevel}>{ level.label }</span>
+                </div>
+
+                <div className={styles.scoreBar}>
+                    <div
+                        className={styles.scoreBarFill}
+                        style={{ width: `${ level.fill }%` }}
+                    />
                 </div>
             </>
         );
     }
 
-    const hint = variant.scoreKind === "suitability" ? suitabilityHint(variant.lift) : undefined;
+    const hint = variant.scoreKind === "suitability"
+        ? suitabilityHint(variant.lift, variant.participation)
+        : undefined;
 
     return (
         <>
-            <span className={styles.scoreLabel} title={ hint }>
-                { variant.scoreKind === "suitability" ? "Подходимость" : "Релевантность" }
-            </span>
+            <span className={styles.scoreLabel} title={ hint }>Релевантность</span>
 
             <div className={styles.scoreValue} title={ hint }>
                 <span className={styles.scoreNumber}>{ variant.score }</span>
@@ -139,18 +190,20 @@ function VariantCard({
                     <VerificationBadge verified={ variant.verified } />
                 </div>
 
-                <div className={styles.cardStats}>
-                    <span>
-                        <b>{ part }</b>
-                        { " " }
-                        { plural(part, "участие", "участия", "участий") }
-                        { " / " }
-                        <b>{ wins }</b>
-                        { " " }
-                        { plural(wins, "победа", "победы", "побед") }
-                        { " в похожих лотах" }
-                    </span>
-                </div>
+                { !variant.isNew && (
+                    <div className={styles.cardStats}>
+                        <span>
+                            <b>{ part }</b>
+                            { " " }
+                            { plural(part, "участие", "участия", "участий") }
+                            { " / " }
+                            <b>{ wins }</b>
+                            { " " }
+                            { plural(wins, "победа", "победы", "побед") }
+                            { " в похожих лотах" }
+                        </span>
+                    </div>
+                ) }
 
                 <div className={styles.why}>
                     <span className={styles.whyTitle}>Почему рекомендуем</span>
@@ -384,6 +437,7 @@ export default function VariantsWidget({
     const [ hasError, setHasError ] = useState(false);
     const [ roles, setRoles ] = useState<SupplierRole[]>([]);
     const [ openCardId, setOpenCardId ] = useState<string | null>(null);
+    const [ chosenSection, setChosenSection ] = useState<Section | null>(null);
 
     useEffect(() => {
         let isAlive = true;
@@ -417,7 +471,16 @@ export default function VariantsWidget({
         };
     }, [ requestId, lotId ]);
 
-    /** Счётчики считаем по полному списку, а не по уже отфильтрованному. */
+    const sectionVariants = useMemo(() => ({
+        history: variants.filter((variant) => !variant.isNew),
+        new: variants.filter((variant) => variant.isNew),
+    }), [ variants ]);
+
+    const section: Section = chosenSection
+        ?? (sectionVariants.history.length === 0 && sectionVariants.new.length > 0 ? "new" : "history");
+    const currentVariants = sectionVariants[section];
+
+    /** Счётчики считаем по полному списку раздела, а не по уже отфильтрованному. */
     const roleCounts = useMemo(() => {
         const counts: Record<SupplierRole, number> = {
             man: 0,
@@ -425,18 +488,18 @@ export default function VariantsWidget({
             sup: 0,
         };
 
-        variants.forEach((variant) => {
+        currentVariants.forEach((variant) => {
             counts[variant.role] += 1;
         });
 
         return counts;
-    }, [ variants ]);
+    }, [ currentVariants ]);
 
     const visibleVariants = useMemo(
-        () => variants.filter((variant) => (
+        () => currentVariants.filter((variant) => (
             roles.length === 0 || roles.includes(variant.role)
         )),
-        [ variants, roles ],
+        [ currentVariants, roles ],
     );
 
     const hasActiveFilters = roles.length > 0;
@@ -513,7 +576,29 @@ export default function VariantsWidget({
                     <p className={styles.state}>Не удалось загрузить варианты. Попробуйте ещё раз.</p>
                 ) }
 
-                { !isLoading && !hasError && visibleVariants.length === 0 && (
+                { !isLoading && !hasError && (
+                    <div className={styles.sections} role="tablist">
+                        { (Object.keys(SECTION_LABELS) as Section[]).map((key) => (
+                            <button
+                                key={ key }
+                                className={ `${ styles.section } ${ key === section ? styles.sectionActive : "" }` }
+                                type="button"
+                                role="tab"
+                                aria-selected={ key === section }
+                                onClick={() => setChosenSection(key)}
+                            >
+                                { SECTION_LABELS[key] }
+                                <span className={styles.sectionCount}>{ sectionVariants[key].length }</span>
+                            </button>
+                        )) }
+                    </div>
+                ) }
+
+                { !isLoading && !hasError && currentVariants.length === 0 && (
+                    <p className={styles.state}>{ SECTION_EMPTY[section] }</p>
+                ) }
+
+                { !isLoading && !hasError && currentVariants.length > 0 && visibleVariants.length === 0 && (
                     <div className={styles.empty}>
                         <span className={styles.emptyTitle}>Под эти фильтры никто не подходит</span>
                         <span>Снимите часть фильтров.</span>

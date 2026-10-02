@@ -38,7 +38,7 @@ class EnrichmentRequest(BaseModel):
 class SearchRequest(BaseModel):
     category: str
     nmck: float = 0
-    platform: Literal["ais", "em"] = "ais"
+    platform: Literal["ais", "em", "all"] = "all"
     mspOnly: bool = False
     customerInn: str | None = None
 
@@ -67,7 +67,7 @@ def search_suppliers(request: SearchRequest, background_tasks: BackgroundTasks) 
             conn,
             okpd,
             request.nmck,
-            eshop=request.platform == "em",
+            eshop=None if request.platform == "all" else request.platform == "em",
             msp_only=request.mspOnly,
             customer_inn=(request.customerInn or "").strip() or None,
         )
