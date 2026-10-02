@@ -4,16 +4,8 @@ services:
     container_name: rlt-db
     restart: always
     shm_size: 128mb
-    #volumes:
-    #  - type: tmpfs
-    #    target: /dev/shm
-    #    tmpfs:
-    #      size: 134217728 # 128*2^20 bytes = 128Mb
-    environment:
-      POSTGRES_NAME: ${POSTGRES_NAME}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file:
+      - ".env"
     volumes:
       - ".database/dumps/:/docker-entrypoint-initdb.d:ro"
     ports:
@@ -40,12 +32,7 @@ services:
     env_file:
       - ".env"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_NAME: ${POSTGRES_NAME}
       POSTGRES_HOST: db
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_PORT: ${POSTGRES_PORT}
     expose:
       - 80
 
