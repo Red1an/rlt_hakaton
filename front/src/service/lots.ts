@@ -22,16 +22,25 @@ function hash(value: string): string {
 /**
  * Ключ лота из параметров подбора: одинаковые параметры всегда попадают
  * в один лот, поэтому повторный подбор не плодит дубли.
+ *
+ * ИНН заказчика в подпись попадает только когда он задан: без него строка
+ * совпадает с прежней, и лоты из хранилища сохраняют свои id вместе
+ * с записями шорт-листа.
  */
 export function lotIdFromValues(values: MatchFormValues): string {
-    const signature = [
+    const parts = [
         values.category?.code ?? "",
         values.nmck.replace(/\s/g, ""),
         values.platform,
         values.mspOnly ? "мсп" : "",
-    ].join("|");
+    ];
+    const inn = values.customerInn?.trim() ?? "";
 
-    return `lot-${ hash(signature) }`;
+    if (inn.length > 0) {
+        parts.push(inn);
+    }
+
+    return `lot-${ hash(parts.join("|")) }`;
 }
 
 /** Ключ комментария к записи шорт-листа. */
@@ -49,7 +58,11 @@ function lotTitle(values: MatchFormValues): string {
  * Создаёт лот под параметры подбора либо обновляет снимок параметров
  * уже существующего. Даты у лота нет — она не показывается в шорт-листе.
  */
-export function upsertLot(lots: ProcurementLot[], values: MatchFormValues): ProcurementLot[] {
+export function upsertLot(
+    lots: ProcurementLot[],
+    values: MatchFormValues,
+    requestId?: string,
+): ProcurementLot[] {
     const id = lotIdFromValues(values);
     const existing = lots.find((lot) => lot.id === id);
 
@@ -61,6 +74,7 @@ export function upsertLot(lots: ProcurementLot[], values: MatchFormValues): Proc
                     title: lotTitle(values),
                     nmck: values.nmck,
                     values,
+                    requestId,
                 }
                 : lot
         ));
@@ -74,6 +88,7 @@ export function upsertLot(lots: ProcurementLot[], values: MatchFormValues): Proc
             title: lotTitle(values),
             nmck: values.nmck,
             values,
+            requestId,
         },
     ];
 }

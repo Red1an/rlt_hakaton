@@ -10,6 +10,7 @@ export {
     ROLE_LABELS,
     fetchCategories,
     fetchVariants,
+    normalizeMatchValues,
     searchCategories,
     submitSearch,
 } from "./matchService";

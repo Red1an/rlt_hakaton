@@ -11,12 +11,14 @@ const STORAGE_PREFIX = "rlt.";
  * Состояние, переживающее переключение экранов и перезагрузку страницы.
  * Значение лежит в localStorage, поэтому его можно восстановить при входе.
  * Панель разработчика может оставить в хранилище мусор — isValid отбрасывает
- * такое значение и возвращает initial.
+ * такое значение и возвращает initial. normalize дописывает в сохранённое
+ * значение поля, которых в нём ещё нет: старые записи остаются на месте.
  */
 export default function usePersistentState<T>(
     key: string,
     initial: T,
     isValid?: (value: unknown) => boolean,
+    normalize?: (value: T) => T,
 ): [ T, Dispatch<SetStateAction<T>> ] {
     const storageKey = `${ STORAGE_PREFIX }${ key }`;
 
@@ -34,7 +36,11 @@ export default function usePersistentState<T>(
                 return initial;
             }
 
-            return parsed as T;
+            if (normalize === undefined) {
+                return parsed as T;
+            }
+
+            return normalize(parsed as T);
         } catch {
             // Приватный режим и битое значение одинаково опасны: молча берём начальное.
             return initial;

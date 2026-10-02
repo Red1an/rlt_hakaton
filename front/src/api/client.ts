@@ -1,10 +1,6 @@
 import axios from "axios";
 import type { AxiosError } from "axios";
 
-import {
-    isMockEnabled, mockAdapter,
-} from "./mock";
-
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export const apiClient = axios.create({
@@ -14,10 +10,6 @@ export const apiClient = axios.create({
         "Content-Type": "application/json",
     },
 });
-
-if (isMockEnabled) {
-    apiClient.defaults.adapter = mockAdapter;
-}
 
 export class ApiError extends Error {
     readonly status: number;

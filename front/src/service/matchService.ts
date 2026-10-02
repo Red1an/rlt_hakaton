@@ -18,7 +18,8 @@ export interface MatchFormValues {
     nmck: string;
     platform: MatchPlatform;
     mspOnly: boolean;
-    searchNew: boolean;
+    /** ИНН заказчика: пустая строка — работаем со всеми заказчиками. */
+    customerInn: string;
 }
 
 /**
@@ -42,6 +43,8 @@ export interface ProcurementLot {
     nmck: string;
     /** Снимок параметров: им форма восстанавливается кнопкой возврата. */
     values: MatchFormValues;
+    /** Идентификатор выдачи бэкенда: по нему грузится список вариантов. */
+    requestId?: string;
 }
 
 /** Запись шорт-листа: поставщик, отобранный в конкретном лоте. */
@@ -55,13 +58,24 @@ export const INITIAL_MATCH_VALUES: MatchFormValues = {
     nmck: "",
     platform: "em",
     mspOnly: false,
-    searchNew: false,
+    customerInn: "",
 };
 
 export const INITIAL_MATCH_STATE: MatchFormState = {
     values: INITIAL_MATCH_VALUES,
     isCollapsed: false,
 };
+
+/**
+ * Дополняет сохранённые значения формы текущими дефолтами. Нужна после
+ * появления новых полей: в хранилище лежит объект без них.
+ */
+export function normalizeMatchValues(values?: Partial<MatchFormValues> | null): MatchFormValues {
+    return {
+        ...INITIAL_MATCH_VALUES,
+        ...values,
+    };
+}
 
 /** Результат отправки формы, нормализованный для UI. */
 export interface MatchSearchResult {
@@ -160,19 +174,19 @@ export async function searchCategories(term: string): Promise<OkpdCategory[]> {
 
 /** Отправка формы. Валидацию полей берёт на себя бэкенд, его сообщения пробрасываются. */
 export async function submitSearch(values: MatchFormValues): Promise<MatchSearchResult> {
+    const customerInn = values.customerInn.trim();
     const result = await matchApi.searchSuppliers({
         category: values.category?.code ?? "",
         nmck: Number(values.nmck.replace(/\s/g, "")),
         platform: values.platform,
         mspOnly: values.mspOnly,
-        searchNew: Boolean(values.searchNew),
+        ...( customerInn.length > 0 ? { customerInn } : {} ),
     });
-    const newPart = values.searchNew ? `, новых в открытых источниках: ${ result.newFound }` : "";
 
     return {
         requestId: result.requestId,
         total: result.total,
-        message: `Подбор завершён: найдено ${ result.total } поставщиков по площадке «${ PLATFORM_LABELS[values.platform] }»${ newPart }`,
+        message: `Подбор завершён: найдено ${ result.total } поставщиков по площадке «${ PLATFORM_LABELS[values.platform] }»`,
     };
 }
 
@@ -182,8 +196,10 @@ function formatMoney(value: number): string {
 }
 
 /** Список поставщиков-вариантов, нормализованный для UI. */
-export async function fetchVariants(): Promise<SupplierVariant[]> {
-    const items = await matchApi.fetchVariants();
+export async function fetchVariants(requestId?: string): Promise<SupplierVariant[]> {
+    const items = await matchApi.fetchVariants(
+        requestId === undefined || requestId.length === 0 ? {} : { requestId },
+    );
 
     return items.map((item) => ({
         id: item.id,

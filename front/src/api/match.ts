@@ -1,10 +1,10 @@
 import { apiClient } from "./client";
 
 const SEARCH_TIMEOUT_MS = 60_000;
-const SEARCH_NEW_TIMEOUT_MS = 300_000;
 import type {
     CategoryDto,
     FetchCategoriesParams,
+    FetchVariantsParams,
     SearchSuppliersRequestDto,
     SearchSuppliersResponseDto,
     SupplierVariantDto,
@@ -31,15 +31,17 @@ export async function searchSuppliers(
     const { data } = await apiClient.post<SearchSuppliersResponseDto>(
         "/match/search",
         payload,
-        { timeout: payload.searchNew ? SEARCH_NEW_TIMEOUT_MS : SEARCH_TIMEOUT_MS },
+        { timeout: SEARCH_TIMEOUT_MS },
     );
 
     return data;
 }
 
 /** Список поставщиков-вариантов для экрана подбора. */
-export async function fetchVariants(): Promise<SupplierVariantDto[]> {
-    const { data } = await apiClient.get<VariantsResponseDto>("/match/variants");
+export async function fetchVariants(params: FetchVariantsParams = {}): Promise<SupplierVariantDto[]> {
+    const { data } = await apiClient.get<VariantsResponseDto>("/match/variants", {
+        params: params.requestId === undefined ? undefined : { requestId: params.requestId },
+    });
 
     return data.items;
 }

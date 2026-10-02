@@ -33,12 +33,20 @@ function formatNmck(raw: string): string {
     return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
+/** Сколько цифр в ИНН заказчика. */
+const INN_LENGTH = 10;
+
+/** ИНН принимаем только цифрами фиксированной длины. */
+function formatInn(raw: string): string {
+    return raw.replace(/\D/g, "").slice(0, INN_LENGTH);
+}
+
 interface MatchFormWidgetProps {
     /** Поля, режим автоподбора и свёрнутость хранит родитель — он же переживает экраны. */
     state: MatchFormState;
     onChange: Dispatch<SetStateAction<MatchFormState>>;
     /** Вызывается после успешного подбора — родитель заводит лот и показывает варианты. */
-    onSearched?: (values: MatchFormValues) => void;
+    onSearched?: (values: MatchFormValues, requestId: string) => void;
 }
 
 export default function MatchFormWidget({
@@ -188,16 +196,36 @@ export default function MatchFormWidget({
             return;
         }
 
+        if (Number(values.nmck.replace(/\s/g, "")) <= 0) {
+            setNotice({
+                tone: "bad",
+                text: "Укажите НМЦК",
+            });
+
+            return;
+        }
+
+        const inn = values.customerInn.trim();
+
+        if (inn.length > 0 && inn.length !== INN_LENGTH) {
+            setNotice({
+                tone: "bad",
+                text: `ИНН должен содержать ${ INN_LENGTH } цифр`,
+            });
+
+            return;
+        }
+
         setNotice(null);
         setIsSubmitting(true);
 
         try {
-            await matchService.submitSearch(values);
+            const result = await matchService.submitSearch(values);
 
             // Успешный подбор сворачивает форму в сводку, результаты — ниже.
             setNotice(null);
             setIsCollapsed(true);
-            onSearched?.(values);
+            onSearched?.(values, result.requestId);
         } catch (error) {
             setNotice({
                 tone: "bad",
@@ -247,8 +275,13 @@ export default function MatchFormWidget({
                             <span className={styles.summaryItem}>только МСП</span>
                         ) }
 
-                        { values.searchNew && (
-                            <span className={styles.summaryItem}>с поиском новых</span>
+                        { values.customerInn.trim().length > 0 && (
+                            <span className={styles.summaryItem}>
+                                ИНН
+                                <span className={styles.summaryMono}>
+                                    { values.customerInn.trim() }
+                                </span>
+                            </span>
                         ) }
                     </div>
                 </div>
@@ -413,23 +446,21 @@ export default function MatchFormWidget({
                         </button>
                     </div>
 
-                    <div className={ `${ styles.field } ${ styles.fieldMsp }` }>
-                        <span className={styles.label}>Искать новых</span>
+                    <label className={ `${ styles.field } ${ styles.fieldInn }` }>
+                        <span className={styles.label}>ИНН заказчика</span>
 
-                        <button
-                            className={ `${ styles.switch } ${
-                                values.searchNew ? styles.switchOn : ""
-                            }` }
-                            type="button"
-                            role="switch"
-                            aria-checked={ Boolean(values.searchNew) }
-                            aria-label="Искать новых поставщиков в открытых источниках"
-                            title="Поиск в интернете и проверка по ЕГРЮЛ, до 3 минут"
-                            onClick={() => setValue("searchNew", !values.searchNew)}
-                        >
-                            <span className={styles.switchKnob} />
-                        </button>
-                    </div>
+                        <input
+                            className={styles.input}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={ INN_LENGTH }
+                            value={ values.customerInn }
+                            placeholder="7812345678"
+                            onChange={(event) => setValue("customerInn", formatInn(event.target.value))}
+                        />
+
+                        <span className={styles.hint}>Необязательно: учитываем опыт с этим заказчиком</span>
+                    </label>
                 </div>
 
                 { notice && (
@@ -443,9 +474,7 @@ export default function MatchFormWidget({
 
                 <div className={styles.actions}>
                     <button className={styles.submit} type="submit" disabled={ isSubmitting }>
-                        { isSubmitting
-                            ? values.searchNew ? "Ищем новых поставщиков, до 3 минут…" : "Подбираем…"
-                            : "Подобрать поставщиков" }
+                        { isSubmitting ? "Подбираем…" : "Подобрать поставщиков" }
                     </button>
 
                     { values.category !== null && (

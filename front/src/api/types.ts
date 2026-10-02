@@ -21,7 +21,8 @@ export interface SearchSuppliersRequestDto {
     nmck: number;
     platform: "ais" | "em";
     mspOnly: boolean;
-    searchNew: boolean;
+    /** ИНН заказчика: пустое поле равносильно его отсутствию. */
+    customerInn?: string;
 }
 
 /** Ответ поиска поставщиков. */
@@ -29,6 +30,12 @@ export interface SearchSuppliersResponseDto {
     requestId: string;
     total: number;
     newFound: number;
+}
+
+/** Параметры выборки списка вариантов. */
+export interface FetchVariantsParams {
+    /** Идентификатор выдачи: без него сервер отдаёт последний поиск. */
+    requestId?: string;
 }
 
 /** Роль компании на рынке категории. */

@@ -11,25 +11,7 @@ import type {
 
 import styles from "./VariantsWidget.module.scss";
 
-/** Новизна поставщика: показать новых, существующих или всех. */
-type NoveltyFilter = "all" | "new" | "existing";
-
 const ROLE_ORDER: SupplierRole[] = [ "man", "dist", "sup" ];
-
-const NOVELTY_OPTIONS: Array<{ value: NoveltyFilter; label: string }> = [
-    {
-        value: "new",
-        label: "Новый",
-    },
-    {
-        value: "existing",
-        label: "Существующий",
-    },
-    {
-        value: "all",
-        label: "Все",
-    },
-];
 
 interface VariantCardProps {
     variant: SupplierVariant;
@@ -307,25 +289,26 @@ function VariantDrawer({
 }
 
 interface VariantsWidgetProps {
+    /** Идентификатор выдачи активного лота: без него сервер отдаёт последний поиск. */
+    requestId?: string;
     /** Список id поставщиков, которые уже в шорт-листе активного лота. */
     shortListIds: string[];
     onToggleShortList: (id: string) => void;
 }
 
 export default function VariantsWidget({
-    shortListIds, onToggleShortList,
+    requestId, shortListIds, onToggleShortList,
 }: VariantsWidgetProps) {
     const [ variants, setVariants ] = useState<SupplierVariant[]>([]);
     const [ isLoading, setIsLoading ] = useState(true);
     const [ hasError, setHasError ] = useState(false);
     const [ roles, setRoles ] = useState<SupplierRole[]>([]);
-    const [ novelty, setNovelty ] = useState<NoveltyFilter>("all");
     const [ openCardId, setOpenCardId ] = useState<string | null>(null);
 
     useEffect(() => {
         let isAlive = true;
 
-        matchService.fetchVariants()
+        matchService.fetchVariants(requestId)
             .then((items) => {
                 if (!isAlive) {
                     return;
@@ -348,7 +331,7 @@ export default function VariantsWidget({
         return () => {
             isAlive = false;
         };
-    }, []);
+    }, [ requestId ]);
 
     /** Счётчики считаем по полному списку, а не по уже отфильтрованному. */
     const roleCounts = useMemo(() => {
@@ -365,40 +348,14 @@ export default function VariantsWidget({
         return counts;
     }, [ variants ]);
 
-    const noveltyCounts = useMemo(() => {
-        const counts: Record<NoveltyFilter, number> = {
-            new: 0,
-            existing: 0,
-            all: variants.length,
-        };
-
-        variants.forEach((variant) => {
-            counts[variant.isNew ? "new" : "existing"] += 1;
-        });
-
-        return counts;
-    }, [ variants ]);
-
     const visibleVariants = useMemo(
-        () => variants.filter((variant) => {
-            if (roles.length > 0 && !roles.includes(variant.role)) {
-                return false;
-            }
-
-            if (novelty !== "all") {
-                const value: NoveltyFilter = variant.isNew ? "new" : "existing";
-
-                if (value !== novelty) {
-                    return false;
-                }
-            }
-
-            return true;
-        }),
-        [ variants, roles, novelty ],
+        () => variants.filter((variant) => (
+            roles.length === 0 || roles.includes(variant.role)
+        )),
+        [ variants, roles ],
     );
 
-    const hasActiveFilters = roles.length > 0 || novelty !== "all";
+    const hasActiveFilters = roles.length > 0;
 
     function toggleRole(role: SupplierRole) {
         setRoles((prev) => (
@@ -408,14 +365,8 @@ export default function VariantsWidget({
         ));
     }
 
-    /** Радиокнопка: всегда выбрано ровно одно значение, повторный клик не снимает. */
-    function toggleNovelty(value: NoveltyFilter) {
-        setNovelty(value);
-    }
-
     function resetFilters() {
         setRoles([]);
-        setNovelty("all");
     }
 
     const openCard = variants.find((variant) => variant.id === openCardId) ?? null;
@@ -465,39 +416,6 @@ export default function VariantsWidget({
                                 <span className={styles.checkLabel}>{ ROLE_LABELS[role] }</span>
 
                                 <span className={styles.checkCount}>{ roleCounts[role] }</span>
-                            </button>
-                        );
-                    }) }
-                </div>
-
-                <div className={styles.group} role="radiogroup" aria-label="Новизна">
-                    <span className={styles.groupTitle}>Новизна</span>
-
-                    { NOVELTY_OPTIONS.map((option) => {
-                        const isOn = novelty === option.value;
-
-                        return (
-                            <button
-                                key={ option.value }
-                                className={styles.checkRow}
-                                type="button"
-                                role="radio"
-                                aria-checked={ isOn }
-                                onClick={() => toggleNovelty(option.value)}
-                            >
-                                <span
-                                    className={ `${ styles.radio } ${
-                                        isOn ? styles.radioOn : ""
-                                    }` }
-                                >
-                                    { isOn && <span className={styles.radioInner} /> }
-                                </span>
-
-                                <span className={styles.checkLabel}>{ option.label }</span>
-
-                                <span className={styles.checkCount}>
-                                    { noveltyCounts[option.value] }
-                                </span>
                             </button>
                         );
                     }) }

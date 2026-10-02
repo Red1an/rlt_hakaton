@@ -2,7 +2,8 @@ import { useState } from "react";
 
 import usePersistentState from "@/hooks/usePersistentState";
 import {
-    INITIAL_MATCH_STATE, lotIdFromValues, shortListCommentKey, upsertLot,
+    INITIAL_MATCH_STATE, lotIdFromValues, normalizeMatchValues,
+    shortListCommentKey, upsertLot,
 } from "@/service";
 import type {
     MatchFormState, MatchFormValues, ProcurementLot, ShortListEntry,
@@ -36,11 +37,32 @@ function omitComment(comments: Comments, lotId: string, supplierId: string): Com
     return rest;
 }
 
+/** Сохранённая форма: значения дополняем дефолтами новых полей, не сбрасывая ввод. */
+function normalizeMatch(saved: MatchFormState): MatchFormState {
+    return {
+        ...INITIAL_MATCH_STATE,
+        ...saved,
+        values: normalizeMatchValues(saved?.values),
+    };
+}
+
+/** Сохранённые лоты: то же для снимка параметров внутри лота. */
+function normalizeLots(saved: ProcurementLot[]): ProcurementLot[] {
+    return saved.map((lot) => ({
+        ...lot,
+        values: normalizeMatchValues(lot.values),
+    }));
+}
+
 export default function MainPage() {
     const [ screen, setScreen ] = useState<SidebarScreen>( "match" );
-    const [ match, setMatch ] = usePersistentState<MatchFormState>("match", INITIAL_MATCH_STATE);
+    const [ match, setMatch ] = usePersistentState<MatchFormState>(
+        "match", INITIAL_MATCH_STATE, undefined, normalizeMatch,
+    );
     const [ hasSearched, setHasSearched ] = usePersistentState("searched", false);
-    const [ lots, setLots ] = usePersistentState<ProcurementLot[]>("lots", [], isArray);
+    const [ lots, setLots ] = usePersistentState<ProcurementLot[]>(
+        "lots", [], isArray, normalizeLots,
+    );
     const [ activeLotId, setActiveLotId ] = usePersistentState("activeLot", "");
     const [ entries, setEntries ] = usePersistentState<ShortListEntry[]>("shortlist", [], isArray);
     const [ comments, setComments ] = usePersistentState<Comments>("comments", {}, isPlainObject);
@@ -56,8 +78,8 @@ export default function MainPage() {
     }
 
     /** Подбор заводит лот либо переиспользует существующий с теми же параметрами. */
-    function handleSearched(values: MatchFormValues) {
-        setLots((prev) => upsertLot(prev, values));
+    function handleSearched(values: MatchFormValues, requestId: string) {
+        setLots((prev) => upsertLot(prev, values, requestId));
         setActiveLotId(lotIdFromValues(values));
         setHasSearched(true);
     }
@@ -115,6 +137,9 @@ export default function MainPage() {
         .filter((entry) => entry.lotId === activeLotId)
         .map((entry) => entry.supplierId);
 
+    /** Выдача активного лота: по requestId бэкенд отдаёт именно его подбор. */
+    const activeLot = lots.find((lot) => lot.id === activeLotId);
+
     return (
         <div className={styles.page}>
             <SidebarWidget
@@ -135,6 +160,7 @@ export default function MainPage() {
                         { hasSearched && (
                             <VariantsWidget
                                 key={ activeLotId }
+                                requestId={ activeLot?.requestId }
                                 shortListIds={ activeShortListIds }
                                 onToggleShortList={ toggleShortList }
                             />
